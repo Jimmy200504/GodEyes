@@ -56,3 +56,13 @@ CLI 工作流程可獨立執行，見 [照片流程](scripts/case-workflow/READM
 - [OpenAI Codex 非互動模式](https://developers.openai.com/codex/noninteractive)：以 `codex exec --json` 追蹤工作並保存輸出。
 - [World Labs 官方範例](https://github.com/worldlabsai/worldlabs-api-examples)：非同步提交、operation 輪詢與世界資產取得。
 - 現有 `../Imagegen` 成功使用的 media upload 與 `marble-1.1` 設定保留為預設，可用 `WORLD_LABS_MODEL` 覆寫。
+
+## SLAM 與 NPU 手勢探索
+
+在世界資料庫開啟任一世界，按「進階設定」→「SLAM／NPU 手勢探索」。遠端模式使用目前選取的世界，按「返回一般探索」即可切回。
+
+板端模型、相機串流、Mac SLAM 與服務啟動見 [手勢控制指南](npu/GESTURE_CONTROL.md)，其他 SLAM 後端與限制見 [SLAM.md](SLAM.md)。張掌前進、食指指向控制左右平移／升降，握拳或收手停止；有手時暫停 SLAM 更新。預設位移倍率為 1.5×，任意尺度不代表公尺。
+
+Vite 同時代理世界生成 API（8000）、姿態 HTTP（8865）、姿態 WebSocket（8867）、相機（8866）與手勢 WebSocket（18782）。真機 NPU 效能與追蹤精度需另行驗證。
+
+測試：`python3 -m unittest discover -s pose -p 'test_*.py'`、`python3 -m unittest discover -s npu -p 'test_*.py'`、`npm test`。

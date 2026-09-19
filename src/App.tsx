@@ -31,6 +31,7 @@ import { api, WORLD_SCENES, WorldScene } from "./utils/worldScenes";
 import { HeadPose } from "./utils/headPose";
 import { calibrationManager } from "./utils/calibration";
 
+const RemoteExplorer = lazy(() => import("./components/RemoteExplorer"));
 const ThreeView = lazy(() => import("./components/ThreeView"));
 const FaceMeshView = lazy(() => import("./components/FaceMeshView"));
 
@@ -42,6 +43,7 @@ function App(): JSX.Element {
   const [generated, setGenerated] = useState<WorldScene[]>([]);
   const [online, setOnline] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [remoteMode, setRemoteMode] = useState(false);
   const [headMode, setHeadMode] = useState(false);
   const [headPose, setHeadPose] = useState<HeadPose | null>(null);
   const [cameraOpen, setCameraOpen] = useState(true);
@@ -78,6 +80,7 @@ function App(): JSX.Element {
   }, []);
   useEffect(() => {
     const handle = () => {
+      setRemoteMode(false);
       setPage(initialPage());
       setHeadMode(false);
       setHeadPose(null);
@@ -86,6 +89,7 @@ function App(): JSX.Element {
     return () => window.removeEventListener("hashchange", handle);
   }, []);
   function navigate(next: Page): void {
+    setRemoteMode(false);
     setPage(next);
     setHeadMode(false);
     setHeadPose(null);
@@ -114,6 +118,10 @@ function App(): JSX.Element {
       setFullscreenError("瀏覽器未允許全螢幕；仍可在此視窗探索。");
     }
   }
+  if (page.kind === "explore" && selected?.spzUrl && remoteMode)
+    return <Suspense fallback={<div className="world-loading">正在準備遠端探索…</div>}>
+      <RemoteExplorer key={selected.id} scene={selected} onBack={() => setRemoteMode(false)} />
+    </Suspense>;
   if (page.kind === "explore" && selected?.spzUrl)
     return (
       <div className="explorer">
@@ -213,6 +221,9 @@ function App(): JSX.Element {
               onClick={() => setCalibrationOpen(true)}
             >
               螢幕與觀看距離校正
+            </button>
+            <button className="secondary" onClick={() => { setHeadMode(false); setHeadPose(null); setRemoteMode(true); }}>
+              SLAM／NPU 手勢探索
             </button>
             <label className="debug-option">
               <input

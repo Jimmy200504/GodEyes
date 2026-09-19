@@ -1,0 +1,37 @@
+Warning: Unsupported TensorFlow Lite semantics for DEQUANTIZE 'StatefulPartitionedCall:0'. Placing on CPU instead
+ - Input(s), Output and Weight tensors must have quantization parameters
+   Op has tensors with missing quantization parameters: StatefulPartitionedCall:0
+Warning: Unsupported TensorFlow Lite semantics for DEQUANTIZE 'StatefulPartitionedCall:1'. Placing on CPU instead
+ - Input(s), Output and Weight tensors must have quantization parameters
+   Op has tensors with missing quantization parameters: StatefulPartitionedCall:1
+
+Network summary for yolov4-tiny_416_quant
+Accelerator configuration               Ethos_U65_256
+System configuration               Ethos_U65_High_End
+Memory mode                      Dedicated_Sram_384KB
+Accelerator clock                                1000 MHz
+Design peak SRAM bandwidth                      14.90 GB/s
+Design peak DRAM bandwidth                       3.49 GB/s
+
+Total SRAM used                                382.53 KiB
+Total DRAM used                               8062.84 KiB
+
+CPU operators = 2 (4.4%)
+NPU operators = 43 (95.6%)
+
+Average SRAM bandwidth                           2.80 GB/s
+Input   SRAM bandwidth                          14.47 MB/batch
+Weight  SRAM bandwidth                          48.52 MB/batch
+Output  SRAM bandwidth                           4.54 MB/batch
+Total   SRAM bandwidth                          67.57 MB/batch
+Total   SRAM bandwidth            per input     67.57 MB/inference (batch size 1)
+
+Average DRAM bandwidth                           1.17 GB/s
+Input   DRAM bandwidth                          17.25 MB/batch
+Weight  DRAM bandwidth                           5.01 MB/batch
+Output  DRAM bandwidth                           5.90 MB/batch
+Total   DRAM bandwidth                          28.17 MB/batch
+Total   DRAM bandwidth            per input     28.17 MB/inference (batch size 1)
+
+Neural network macs                        3460622464 MACs/batch
+

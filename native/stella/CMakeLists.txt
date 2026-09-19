@@ -1,0 +1,12 @@
+cmake_minimum_required(VERSION 3.16)
+project(godeyes_stella_bridge LANGUAGES CXX C)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+if(NOT STELLA_SOURCE_DIR)
+  message(FATAL_ERROR "STELLA_SOURCE_DIR must point to pinned stella_vslam 0.7.0")
+endif()
+add_subdirectory("${STELLA_SOURCE_DIR}" stella)
+add_executable(godeyes_stella_worker worker.cc)
+target_link_libraries(godeyes_stella_worker PRIVATE stella_vslam)
+set_target_properties(godeyes_stella_worker PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bridge")

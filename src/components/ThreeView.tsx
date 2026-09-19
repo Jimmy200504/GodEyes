@@ -1,3 +1,4 @@
+import type { GestureTelemetry } from '../utils/gestureSocket';
 import {
   useRef,
   useEffect,
@@ -13,7 +14,13 @@ import { CalibrationData } from "../utils/calibration";
 interface Props {
   headPose: HeadPose | null;
   scene: WorldScene;
-  mode: "mouse" | "head";
+  mode: "mouse" | "head" | "remote";
+  onGestureStatus?: (status: string) => void;
+  onGestureTelemetry?: (data: GestureTelemetry) => void;
+  renderSmoothing?: boolean;
+  posePrediction?: boolean;
+  allowCoast?: boolean;
+  poseEpoch?: number;
 }
 export interface ThreeViewHandle {
   updateCalibration: (calibration: CalibrationData) => void;
@@ -21,7 +28,10 @@ export interface ThreeViewHandle {
   resetView: () => void;
 }
 const ThreeView = forwardRef<ThreeViewHandle, Props>(
-  ({ headPose, scene, mode }, ref) => {
+  ({ headPose, scene, mode, onGestureStatus, onGestureTelemetry, renderSmoothing = true, posePrediction = false, allowCoast = false, poseEpoch = 0 }, ref) => {
+    const remoteOptions = useRef({ remote: mode === "remote", onGestureStatus, onGestureTelemetry });
+    remoteOptions.current.onGestureStatus = onGestureStatus;
+    remoteOptions.current.onGestureTelemetry = onGestureTelemetry;
     const container = useRef<HTMLDivElement>(null);
     const sceneRef = useRef(scene);
     sceneRef.current = scene;
@@ -36,6 +46,9 @@ const ThreeView = forwardRef<ThreeViewHandle, Props>(
       try {
         manager.current = new ThreeSceneManager({
           container: container.current,
+          remote: remoteOptions.current.remote,
+          onGestureStatus: status => remoteOptions.current.onGestureStatus?.(status),
+          onGestureTelemetry: data => remoteOptions.current.onGestureTelemetry?.(data),
         });
         manager.current.start();
         const resize = new ResizeObserver(([entry]) => {
@@ -62,9 +75,14 @@ const ThreeView = forwardRef<ThreeViewHandle, Props>(
     useEffect(() => {
       manager.current?.setMode(mode);
     }, [mode]);
+    useEffect(() => { manager.current?.resetHeadPose(); }, [poseEpoch]);
+    useEffect(() => { manager.current?.setPosePrediction(posePrediction); }, [posePrediction]);
+    useEffect(() => { manager.current?.setRenderSmoothing(renderSmoothing); }, [renderSmoothing]);
     useEffect(() => {
       if (headPose) manager.current?.updateHeadPose(headPose);
-    }, [headPose]);
+      else if (mode === "remote" && allowCoast) manager.current?.coastHeadPose();
+      else if (mode === "remote") manager.current?.holdHeadPose();
+    }, [headPose, allowCoast, mode, posePrediction]);
     useImperativeHandle(ref, () => ({
       updateCalibration: (value) => manager.current?.updateCalibration(value),
       setDebugMode: (enabled) => manager.current?.setDebugMode(enabled),

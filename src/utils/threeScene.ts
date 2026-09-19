@@ -5,11 +5,19 @@ import { KeyboardNavigation } from "./keyboardNavigation";
 import { HeadPose } from "./headPose";
 import { OffAxisCamera } from "./offAxisCamera";
 import { calibrationManager, CalibrationData } from "./calibration";
+import { GestureSlamClutch } from './gestureSlamClutch';
+import { GestureNavigation } from './gestureNavigation';
+import { connectGestureSocket, type GestureTelemetry, type GestureConnection } from './gestureSocket';
+import { RenderPoseSmoother } from './renderPose';
 
 export interface ThreeSceneOptions {
   container: HTMLElement;
   width?: number;
   height?: number;
+  onGestureTelemetry?: (data: GestureTelemetry) => void;
+  onGestureStatus?: (status: string) => void;
+  remote?: boolean;
+  onSceneStatus?: (status: 'loading' | 'ready' | 'error') => void;
 }
 
 export class ThreeSceneManager {
@@ -20,6 +28,7 @@ export class ThreeSceneManager {
   private animationFrameId: number | null = null;
   private isRunning = false;
   private currentHeadPose: HeadPose = { x: 0.5, y: 0.5, z: 1 };
+  private renderPose = new RenderPoseSmoother();
   private debugMode: boolean = false;
   private debugHelpers: THREE.Object3D[] = [];
   private spark: SparkRenderer;
@@ -27,12 +36,16 @@ export class ThreeSceneManager {
   private worldReady = false;
   private disposed = false;
   private navigation: KeyboardNavigation;
-  private mode: "mouse" | "head" = "mouse";
+  private mode: "mouse" | "head" | "remote" = "mouse";
   private yaw = 0;
   private pitch = 0;
   private previousTime = 0;
   private pointer: { x: number; y: number; id: number } | null = null;
   private target: HTMLElement;
+  private gesture = new GestureNavigation();
+  private slamClutch = new GestureSlamClutch();
+  private poseVersion = 0;
+  private disconnectGesture: GestureConnection;
 
   constructor(options: ThreeSceneOptions) {
     this.target = options.container;
@@ -68,6 +81,15 @@ export class ThreeSceneManager {
     this.spark = new SparkRenderer({ renderer: this.renderer, maxStdDev: 2 });
     this.scene.add(this.spark);
 
+    this.disconnectGesture = options.remote ? connectGestureSocket(
+      (command, age) => this.gesture.accept(command, age),
+      this.gesture.clear,
+      options.onGestureStatus ?? (() => {}),
+      data => {
+        this.slamClutch.observeHand(data.handPresent, data.accepted, performance.now(), Object.values(data.command).some(value => Math.abs(value) > .001));
+        options.onGestureTelemetry?.({ ...data, slamClutched: this.slamClutch.held, slamResumeWaiting: this.slamClutch.waiting });
+      },
+    ) : () => {};
     this.createDebugHelpers();
   }
 
@@ -108,12 +130,13 @@ export class ThreeSceneManager {
     }
   }
 
-  setMode(mode: "mouse" | "head"): void {
+  setMode(mode: "mouse" | "head" | "remote"): void {
     this.mode = mode;
     this.resetView();
   }
 
   resetView(): void {
+    this.resetHeadPose();
     this.navigation.reset();
     this.yaw = 0;
     this.pitch = 0;
@@ -164,8 +187,17 @@ export class ThreeSceneManager {
   }
 
   updateHeadPose(headPose: HeadPose): void {
-    this.currentHeadPose = headPose;
+    if (this.mode !== "remote") { this.currentHeadPose = headPose; return; }
+    if (this.slamClutch.waiting) this.renderPose.reset();
+    this.poseVersion++;
+    this.renderPose.setTarget(headPose, performance.now(), Math.max(0, 250-(headPose.ageMs ?? 0)));
   }
+
+  coastHeadPose(): void { this.renderPose.coast(); }
+  setPosePrediction(enabled: boolean): void { this.renderPose.predictionEnabled = enabled; this.renderPose.hold(); }
+  holdHeadPose(): void { this.renderPose.hold(); }
+  resetHeadPose(): void { this.renderPose.reset(); this.gesture.reset(); this.slamClutch.reset(); this.currentHeadPose = { x: .5, y: .5, z: 1 }; }
+  setRenderSmoothing(enabled: boolean): void { this.renderPose.enabled = enabled; }
 
   setDebugMode(enabled: boolean): void {
     this.debugMode = enabled;
@@ -188,7 +220,12 @@ export class ThreeSceneManager {
     const time = performance.now();
     const seconds = this.previousTime ? (time - this.previousTime) / 1000 : 0;
     this.previousTime = time;
-    if (this.mode === "head") {
+    if (this.mode === "remote") {
+      this.currentHeadPose = this.renderPose.step(time) ?? this.currentHeadPose;
+      this.offAxisCamera.updateFromHeadPose(this.slamClutch.apply(this.currentHeadPose, this.poseVersion));
+      this.gesture.update(seconds, this.camera.quaternion, time);
+      this.camera.position.add(this.gesture.offset);
+    } else if (this.mode === "head") {
       this.offAxisCamera.updateFromHeadPose(this.currentHeadPose);
     } else {
       this.camera.position.set(
@@ -201,8 +238,10 @@ export class ThreeSceneManager {
       );
       this.camera.updateProjectionMatrix();
     }
-    this.navigation.update(seconds, this.camera.quaternion);
-    this.camera.position.add(this.navigation.offset);
+    if (this.mode !== "remote") {
+      this.navigation.update(seconds, this.camera.quaternion);
+      this.camera.position.add(this.navigation.offset);
+    }
 
     if (this.debugMode && this.debugHelpers.length > 1) {
       this.debugHelpers[1].position.copy(this.camera.position);
@@ -236,6 +275,7 @@ export class ThreeSceneManager {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.disconnectGesture();
     this.stop();
     this.navigation.dispose();
     this.target.removeEventListener("pointerdown", this.pointerDown);

@@ -1,10 +1,21 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// https://vitejs.dev/config/
+const proxy = {
+  '/api/gesture/ws': { target: 'ws://127.0.0.1:18782', ws: true },
+  '/api/pose/ws': { target: 'ws://127.0.0.1:8867', ws: true },
+  '/api/pose': 'http://127.0.0.1:8865',
+  '/api/camera': {
+    target: 'http://127.0.0.1:8866',
+    rewrite: (path: string) => path.replace(/^\/api\/camera/, ''),
+  },
+  '/api': 'http://127.0.0.1:8000',
+};
+
 export default defineConfig({
   plugins: [react()],
-  server: { proxy: { '/api': 'http://127.0.0.1:8000' } },
+  server: { proxy },
+  preview: { proxy },
   optimizeDeps: {
     exclude: [
       'lucide-react',
@@ -22,4 +33,5 @@ export default defineConfig({
       ]
     }
   }
+
 });

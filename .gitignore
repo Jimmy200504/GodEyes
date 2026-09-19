@@ -35,3 +35,25 @@ data/
 case-runs/
 __pycache__/
 *.pyc
+
+
+*.py[cod]
+
+.venv/
+/calibration/
+/camera.json
+/marker-B.png
+
+.stella/
+.pyslam/
+.pyslam-min/
+
+# Native/CMake build outputs
+build/
+CMakeFiles/
+CMakeCache.txt
+compile_commands.json
+*.o
+*.a
+*.so
+*.dylib

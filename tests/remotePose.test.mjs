@@ -1,0 +1,244 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import test from 'node:test';
+import ts from 'typescript';
+import { Quaternion, Vector3 } from 'three';
+const source = await readFile(new URL('../src/utils/remotePose.ts', import.meta.url), 'utf8');
+const { outputText } = ts.transpileModule(source, {
+  compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+});
+const js = outputText.replace(/from ['"]three['"]/g, `from '${import.meta.resolve('three')}'`);
+const { RemotePoseTracker, AdaptivePoseSmoother } = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
+const packet = (seq, changes = {}) => ({ version: 1, frame: 'opencv-c2w', session_id: 'one',
+  map_id: 'map', source: 'test', seq, capture_monotonic_ns: seq * 1e6,
+  tracking: 'tracking', scale: 'metric', position: [0, 0, 0], quaternion_xyzw: [0, 0, 0, 1], ...changes });
+const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `${a} != ${b}`);
+
+test('optical forward/down map to Three.js negative Z/Y without angle gain', () => {
+  const tracker = new RemotePoseTracker();
+  tracker.update(packet(0), 0);
+  const yaw = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), 0.4);
+  const pose = tracker.update(packet(1, { position: [1, 2, 3], quaternion_xyzw: yaw.toArray() }), 0);
+  assert.deepEqual(pose.position, { x: 1, y: -2, z: -3 });
+  close(pose.orientation.y, -yaw.y);
+  close(pose.orientation.w, yaw.w);
+});
+
+test('translation is relative to the initial orientation, not world axes', () => {
+  const tracker = new RemotePoseTracker();
+  const q = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), Math.PI / 2);
+  tracker.update(packet(0, { position: [5, 0, 0], quaternion_xyzw: q.toArray() }), 0);
+  const pose = tracker.update(packet(1, { position: [6, 0, 0], quaternion_xyzw: q.toArray() }), 0);
+  close(pose.position.x, 0); close(pose.position.z, -1); close(pose.orientation.w, 1);
+});
+
+test('stale, lost, arbitrary-scale and duplicate packets cannot move camera', () => {
+  const tracker = new RemotePoseTracker();
+  tracker.update(packet(0), 0);
+  assert.equal(tracker.update(packet(1), 251), null);
+  assert.equal(tracker.update(packet(1, { tracking: 'lost' }), 0), null);
+  assert.equal(tracker.update(packet(1, { scale: 'arbitrary' }), 0), null);
+  assert.equal(tracker.update(packet(0), 0), null);
+  assert.ok(tracker.update(packet(1), 0));
+});
+
+test('new map/session freezes until explicit recenter', () => {
+  for (const change of [{ map_id: 'new' }, { session_id: 'new' }]) {
+    const tracker = new RemotePoseTracker();
+    tracker.update(packet(0), 0);
+    assert.equal(tracker.update(packet(1, change), 0), null);
+    assert.equal(tracker.update(packet(2), 0), null);
+    tracker.reset();
+    const pose = tracker.update(packet(0, { ...change, position: [100, 0, 0] }), 0);
+    close(pose.position.x, 0);
+  }
+});
+
+
+test('approximate demo drives view with explicit uncalibrated status', () => {
+  const tracker = new RemotePoseTracker();
+  assert.ok(tracker.update(packet(0, { scale: 'estimated' }), 0));
+  assert.match(tracker.status, /未校正粗估/);
+  assert.equal(tracker.update(packet(1, { tracking: 'initializing', tracking_reason: 'calibration_required' }), 0), null);
+  assert.match(tracker.status, /需校正/);
+});
+
+
+const measuredPose = (x = 0, yaw = 0) => {
+  const q = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), yaw);
+  return { x: .5, y: .5, z: 1, position: { x, y: 0, z: 0 },
+    orientation: { x: q.x, y: q.y, z: q.z, w: q.w } };
+};
+const rotationOf = pose => new Quaternion(pose.orientation.x, pose.orientation.y,
+  pose.orientation.z, pose.orientation.w);
+
+test('adaptive filtering reduces stationary position and angular jitter at 20 Hz', () => {
+  const filter = new AdaptivePoseSmoother();
+  filter.update(measuredPose(), 0);
+  let positionPower = 0, anglePower = 0;
+  for (let i = 1; i <= 100; i++) {
+    const sign = i % 2 ? 1 : -1;
+    const output = filter.update(measuredPose(.005 * sign, .02 * sign), i / 20);
+    if (i > 20) {
+      positionPower += output.position.x ** 2;
+      anglePower += rotationOf(output).angleTo(new Quaternion()) ** 2;
+    }
+  }
+  assert.ok(Math.sqrt(positionPower / 80) < .005 * .6);
+  assert.ok(Math.sqrt(anglePower / 80) < .02 * .6);
+});
+
+test('smoothing follows sustained movement without waiting for a pause', () => {
+  const filter = new AdaptivePoseSmoother();
+  filter.update(measuredPose(), 0);
+  let output;
+  for (let i = 1; i <= 4; i++) output = filter.update(measuredPose(.2, Math.PI / 2), i / 20);
+  assert.ok(output.position.x > .16 && output.position.x <= .2);
+  assert.ok(rotationOf(output).angleTo(rotationOf(measuredPose(0, Math.PI / 2))) < .25);
+});
+
+test('quaternion sign changes and wrap-around use shortest arc', () => {
+  const filter = new AdaptivePoseSmoother();
+  const initial = measuredPose(0, 179 * Math.PI / 180);
+  filter.update(initial, 0);
+  const negative = structuredClone(initial);
+  for (const key of ['x', 'y', 'z', 'w']) negative.orientation[key] *= -1;
+  const unchanged = filter.update(negative, .05);
+  close(rotationOf(initial).angleTo(rotationOf(unchanged)), 0);
+  const wrapped = filter.update(measuredPose(0, -179 * Math.PI / 180), .1);
+  assert.ok(rotationOf(initial).angleTo(rotationOf(wrapped)) < 2.1 * Math.PI / 180);
+  close(rotationOf(wrapped).length(), 1);
+});
+
+test('capture gaps resume with a bounded step; repeated/backward timestamps do not advance', () => {
+  const filter = new AdaptivePoseSmoother();
+  filter.update(measuredPose(), 0);
+  close(filter.update(measuredPose(1), 0).position.x, 0);
+  close(filter.update(measuredPose(1), -.1).position.x, 0);
+  const recovered = filter.update(measuredPose(1), 1).position.x;
+  assert.ok(recovered > 0 && recovered < .3);
+  const resumed = filter.update(measuredPose(1), 1.05).position.x;
+  assert.ok(resumed > 0 && resumed < 1);
+  filter.reset();
+  close(filter.update(measuredPose(2), 2).position.x, 2);
+});
+
+test('filter behavior remains similar across variable camera rates', () => {
+  const run = frequency => {
+    const filter = new AdaptivePoseSmoother();
+    filter.update(measuredPose(), 0);
+    let output;
+    for (let i = 1; i <= frequency; i++) output = filter.update(measuredPose(.2 * i / frequency), i / frequency);
+    return output.position.x;
+  };
+  assert.ok(Math.abs(run(17) - run(23)) < .01);
+});
+
+test('tracker toggle and tracking loss preserve the existing origin', () => {
+  const tracker = new RemotePoseTracker(true);
+  tracker.update(packet(0), 0);
+  const first = tracker.update(packet(1, { capture_monotonic_ns: 50e6, position: [.01, 0, 0] }), 0);
+  assert.ok(first.position.x > 0 && first.position.x < .01);
+  tracker.setSmoothing(false);
+  close(tracker.update(packet(2, { capture_monotonic_ns: 100e6, position: [.1, 0, 0] }), 0).position.x, .1);
+  tracker.setSmoothing(true);
+  tracker.update(packet(3, { capture_monotonic_ns: 150e6, tracking: 'lost' }), 0);
+  close(tracker.update(packet(4, { capture_monotonic_ns: 200e6, position: [.2, 0, 0] }), 0).position.x, .2);
+  tracker.reset();
+  close(tracker.update(packet(5, { capture_monotonic_ns: 250e6, position: [.2, 0, 0] }), 0).position.x, 0);
+});
+
+
+test('lost packets never reset a nonzero view; reacquisition resumes smoothly', () => {
+  const tracker = new RemotePoseTracker(true);
+  tracker.update(packet(0), 0);
+  let held;
+  for (let i = 1; i <= 10; i++) {
+    held = tracker.update(packet(i, { capture_monotonic_ns: i * 50e6,
+      position: [.3, .1, .2], quaternion_xyzw: [0, Math.sin(.2), 0, Math.cos(.2)] }), 0);
+  }
+  assert.ok(held.position.x > .2);
+  for (let i = 11; i <= 20; i++) {
+    // An invalid packet can carry origin placeholders; none may reach the renderer.
+    assert.equal(tracker.update(packet(i, { capture_monotonic_ns: i * 50e6,
+      tracking: 'lost', position: [0, 0, 0] }), 0), null);
+  }
+  const recovered = tracker.update(packet(21, { capture_monotonic_ns: 1050e6,
+    position: [.5, .2, .3], quaternion_xyzw: [0, Math.sin(.3), 0, Math.cos(.3)] }), 0);
+  assert.ok(recovered.position.x > held.position.x && recovered.position.x < .5);
+  assert.ok(rotationOf(recovered).angleTo(rotationOf(held)) < .1);
+  const moving = tracker.update(packet(22, { capture_monotonic_ns: 1100e6,
+    position: [.5, .2, .3], quaternion_xyzw: [0, Math.sin(.3), 0, Math.cos(.3)] }), 0);
+  assert.ok(moving.position.x > held.position.x && moving.position.x < .5);
+});
+
+test('stale data or a network hold preserve the filtered view on recovery', () => {
+  for (const pause of ['stale', 'network']) {
+    const tracker = new RemotePoseTracker(true);
+    tracker.update(packet(0), 0);
+    const held = tracker.update(packet(1, { capture_monotonic_ns: 50e6, position: [.3, 0, 0] }), 0);
+    if (pause === 'stale') assert.equal(tracker.update(packet(2), 300), null);
+    else tracker.hold();
+    const recovered = tracker.update(packet(3, { capture_monotonic_ns: 150e6, position: [0, 0, 0] }), 0);
+    assert.ok(recovered.position.x > held.position.x * .7 && recovered.position.x < held.position.x);
+  }
+});
+
+
+test('alternating tracking and loss still advances toward valid measurements', () => {
+  const tracker = new RemotePoseTracker(true);
+  tracker.update(packet(0), 0);
+  let previous = 0;
+  for (let i = 1; i <= 20; i += 2) {
+    assert.equal(tracker.update(packet(i, { capture_monotonic_ns: i * 50e6, tracking: 'lost' }), 0), null);
+    const next = tracker.update(packet(i + 1, { capture_monotonic_ns: (i + 1) * 50e6,
+      position: [.2, 0, 0] }), 0).position.x;
+    assert.ok(next > previous && next < .2);
+    previous = next;
+  }
+  assert.ok(previous > .18);
+});
+
+test('SLAM opt-in permits arbitrary scale and preserves basis/recenter rules', () => {
+  const tracker = new RemotePoseTracker(false, true);
+  assert.ok(tracker.update(packet(0, { scale: 'arbitrary' }), 0));
+  const moved = tracker.update(packet(1, { scale: 'arbitrary', position: [1, 2, 3] }), 0);
+  assert.deepEqual(moved.position, { x: 1, y: -2, z: -3 });
+  assert.match(tracker.status, /任意尺度/);
+  assert.equal(tracker.update(packet(2, { scale: 'arbitrary', map_id: 'new-map' }), 0), null);
+});
+
+test('authorized timeout rebuild rebases the new map onto the last view',()=>{
+ const tracker=new RemotePoseTracker(false,true,true);
+ const old={source:'cpu-sparse-vo-local',session_id:'old',map_id:'sparse-old',scale:'arbitrary'};
+ tracker.update(packet(1,old),0);
+ const yaw=new Quaternion().setFromAxisAngle(new Vector3(0,1,0),.3);
+ const last=tracker.update(packet(2,{...old,position:[1,2,3],quaternion_xyzw:yaw.toArray()}),0);
+ const fresh={...old,session_id:'new',map_id:'sparse-new',previous_session_id:'old',reset_reason:'lost_timeout'};
+ assert.equal(tracker.update(packet(1,{...fresh,tracking:'initializing'}),0),null);
+ assert.match(tracker.status,/自動重建/);
+ const q=new Quaternion().setFromAxisAngle(new Vector3(0,1,0),-.8);
+ const first=tracker.update(packet(2,{...fresh,position:[10,20,30],quaternion_xyzw:q.toArray()}),0);
+ for(const k of ['x','y','z']) close(first.position[k],last.position[k]);
+ assert.ok(rotationOf(first).angleTo(rotationOf(last))<1e-6);
+ const next=tracker.update(packet(3,{...fresh,position:[11,20,30],quaternion_xyzw:q.toArray()}),0);
+ assert.ok(Math.hypot(next.position.x-first.position.x,next.position.z-first.position.z)>.99);
+ tracker.reset();
+ const centered=tracker.update(packet(4,{...fresh,position:[11,20,30]}),0);
+ close(centered.position.x,0);close(centered.position.z,0);
+});
+test('timeout rebase requires matching predecessor and rejects stale or unrelated epochs',()=>{
+ for(const changes of [{previous_session_id:'wrong'},{reset_reason:'manual'},{source:'mock'},{map_id:'unexpected'}]){
+  const tracker=new RemotePoseTracker(false,true,true);
+  const old={source:'cpu-sparse-vo-local',session_id:'old',map_id:'sparse-old',scale:'arbitrary'};
+  tracker.update(packet(1,old),0);
+  const fresh={...old,session_id:'new',map_id:'sparse-new',previous_session_id:'old',reset_reason:'lost_timeout',...changes};
+  assert.equal(tracker.update(packet(1,fresh),0),null);
+  assert.match(tracker.status,/請重設原點/);
+ }
+ const tracker=new RemotePoseTracker(false,true,true);
+ const old={source:'cpu-sparse-vo-local',session_id:'old',map_id:'sparse-old',scale:'arbitrary'};
+ tracker.update(packet(1,old),0);
+ assert.equal(tracker.update(packet(1,{...old,session_id:'new',map_id:'sparse-new',previous_session_id:'old',reset_reason:'lost_timeout'}),251),null);
+ assert.ok(tracker.update(packet(2,old),0));
+});
