@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Webcam from 'react-webcam';
 import { DrawingUtils, FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
-import { HeadPose, HeadRotationTracker } from '../utils/headPose';
+import { HeadPose, HeadRotationTracker, HeadHeightTracker } from '../utils/headPose';
 
 declare global {
   interface Window {
@@ -29,6 +29,7 @@ export default function FaceMeshView({ onHeadPoseUpdate }: FaceMeshViewProps) {
   const callbackRef = useRef(onHeadPoseUpdate);
   callbackRef.current = onHeadPoseUpdate;
   const rotationTracker = useRef(new HeadRotationTracker());
+  const heightTracker = useRef(new HeadHeightTracker());
   const [cameraReady, setCameraReady] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -42,6 +43,7 @@ export default function FaceMeshView({ onHeadPoseUpdate }: FaceMeshViewProps) {
     let detector: FaceLandmarker | undefined;
     let lastVideoTime = -1;
     rotationTracker.current.reset();
+    heightTracker.current.reset();
     setIsLoading(true);
     setLastError(null);
 
@@ -71,8 +73,11 @@ export default function FaceMeshView({ onHeadPoseUpdate }: FaceMeshViewProps) {
               const result = detector!.detectForVideo(video, performance.now());
               const matrix = result.facialTransformationMatrixes[0];
               const orientation = matrix && rotationTracker.current.update(matrix.data);
+              const heightOffset = matrix && heightTracker.current.update(matrix.data);
               setTracking(Boolean(orientation));
-              callbackRef.current?.(orientation ? { x: 0.5, y: 0.5, z: 1, orientation } : null);
+              callbackRef.current?.(orientation ? {
+                x: 0.5, y: 0.5, z: 1, orientation, heightOffset: heightOffset ?? 0,
+              } : null);
               const ctx = canvas.getContext('2d');
               if (ctx) {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -121,10 +126,13 @@ export default function FaceMeshView({ onHeadPoseUpdate }: FaceMeshViewProps) {
         className="absolute inset-0 w-full h-full object-cover" />
       <div className="absolute bottom-2 inset-x-2 rounded bg-black/70 p-2 text-xs text-white">
         <p role="status">{lastError || (isLoading ? '正在載入頭部追蹤…' : tracking
-          ? '頭部角度 1：1 · 正視螢幕可重設方向' : '未偵測到臉，視角保持原位')}</p>
+          ? '水平 1：4 · 鉛直 1：2 · 正視螢幕可重設方向' : '未偵測到臉，視角保持原位')}</p>
         <button type="button" disabled={!tracking || isLoading}
           className="mt-1 rounded bg-white/20 px-2 py-1 disabled:opacity-40"
-          onClick={() => rotationTracker.current.reset()}>重設正前方</button>
+          onClick={() => {
+            rotationTracker.current.reset();
+            heightTracker.current.reset();
+          }}>重設正前方與高度</button>
         {lastError && <button type="button" className="ml-2 underline"
           onClick={() => { if (cameraReady) setAttempt(value => value + 1); else window.location.reload(); }}>重試</button>}
       </div>

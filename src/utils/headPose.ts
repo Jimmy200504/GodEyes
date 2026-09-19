@@ -4,6 +4,8 @@ export interface HeadPose {
   x: number;
   y: number;
   z: number;
+  /** Vertical displacement from the neutral pose, in scene meters. */
+  heightOffset?: number;
   orientation?: { x: number; y: number; z: number; w: number };
 }
 
@@ -26,6 +28,29 @@ export class HeadRotationTracker {
     const relative = this.neutral.clone().invert().multiply(rotation);
     // Change from the face's forward axis to the camera's forward axis.
     return { x: -relative.x, y: relative.y, z: -relative.z, w: relative.w };
+  }
+}
+
+export class HeadHeightTracker {
+  private neutralY: number | null = null;
+  private height = 0;
+
+  reset(): void {
+    this.neutralY = null;
+    this.height = 0;
+  }
+
+  update(data: number[]): number | null {
+    if (data.length !== 16 || !data.every(Number.isFinite)) return null;
+    const matrix = new Matrix4().fromArray(data);
+    if (Math.abs(matrix.determinant()) < 1e-8) return null;
+    // MediaPipe metric face transforms use centimeters, with Y pointing up.
+    // Translation stays independent of head rotation and forward/back movement.
+    const y = matrix.elements[13];
+    if (this.neutralY === null) this.neutralY = y;
+    const target = Math.max(-0.5, Math.min(0.5, (y - this.neutralY) * 0.01));
+    this.height += (target - this.height) * 0.25;
+    return this.height;
   }
 }
 
