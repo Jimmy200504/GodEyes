@@ -20,10 +20,21 @@ FRDM-i.MX93，2 × Cortex-A55；Linux MemTotal 1,985,620 KiB（1.89 GiB），當
 
 ```sh
 npm ci
-npm run precompute:mac
+npm run precompute:mac -- --out ./precomputed-output
 ```
 
-這個指令會先檢查 macOS 才載入 Vite，使用專屬入口 `http://127.0.0.1:5174/export.html`，不開原網站。以桌面 Chrome / Edge 開啟；按「選擇空資料夾並匯出」，挑選空資料夾。首次使用需允許瀏覽器寫入選定資料夾。GPU 在按下匯出後才初始化。
+需要已安裝的桌面 Chrome 或 Edge，以及符合本專案 Vite 要求的 Node.js（20.19+ 或 22.12+）。這是一個 CLI：不開可操作的 Web UI、不使用瀏覽器資料夾選擇器。Node 直接建立並寫入 `--out` 指定的空資料夾。若路徑已有檔案，會拒絕覆寫；重新匯出請指定新路徑。
+
+底層仍使用現有 Spark / Three.js 的瀏覽器 WebGL 渲染能力：CLI 在 **MacBook** 上暫時啟動 loopback Vite 資源服務與 headless Chrome，透過私有 DevTools pipe 控制，不需手動開頁面。Chrome 使用獨立的暫存 profile，不碰平常瀏覽器資料；成功、失敗或 Ctrl+C 時關閉其程序與服務。未禁用 GPU，但實際硬體加速仍取決於 Mac 的 Chrome 環境。相關機制見 [Chrome Headless 說明](https://developer.chrome.com/docs/chromium/headless)。macOS 檢查在啟動服務／瀏覽器之前，板子會直接拒絕執行。
+
+其他選項：
+
+```sh
+npm run precompute:mac -- --out ./capture-720 --views 60 --width 1280 --height 720 --format rgb565le
+npm run precompute:mac -- --help
+```
+
+Chrome 不在標準 `/Applications` 路徑時，用 `--chrome "/完整路徑/Google Chrome.app/Contents/MacOS/Google Chrome"` 指定執行檔。指令不會自動下載或安裝瀏覽器，也不需要 Playwright。這個版本取代舊版 `showDirectoryPicker` 匯出 UI，避開 Chromium 對系統／敏感資料夾的選取限制。
 
 選 21、45 或 60 個視角，JPEG 或 RGB565。預設 15 個水平角（−35° 至 +35°）× 3 個俯仰角（−10°、0°、+10°）。這是站在房間內轉頭，不是繞物體公轉。相機使用現有程式中立姿態：位置 `(0,0,0.6)`、FOV 75°、YXZ 旋轉；世界 X 旋轉 π、縮放 0.3、Z 位置 0.6。不載入佔位鞋子模型；不包含個人校正資料。
 
@@ -41,7 +52,9 @@ output/
   frames/view-000.jpg ...（或 .rgb565）
 ```
 
-每次只處理、寫入一張，不將整批影像打包在 RAM。`manifest.json` 最後才寫入，沒有它代表匯出不完整。失敗後請改用空資料夾重新匯出。runtime 原始檔以 Vite raw import 複製，不含開發伺服器注入程式。
+每次只處理、寫入一張，不將整批影像打包在 RAM。寫入端只接受本次隨機 token、預期影像檔名與有限大小；檔案使用 exclusive write，不覆寫既有內容。全部張數與容量核對後才寫入 `manifest.json`；沒有它代表匯出不完整。失敗後保留部分輸出供診斷，請改用空資料夾重新匯出。runtime 由 Node 直接複製原始檔，不含開發伺服器注入程式。終端會顯示每張進度、總耗時與容量；`manifest.json` 也記錄 `exportSeconds`。
+
+完成後請回傳完整輸出資料夾 ZIP、MacBook 晶片型號，以及終端結果／錯誤。要在 MacBook 檢查互動，可另以靜態 HTTP 服務開啟輸出資料夾；不要以 file:// 雙擊 HTML。
 
 ## 裝置展示
 
@@ -56,7 +69,7 @@ RGB565 規格：由左上至右下、逐列、每像素 2 bytes little-endian，
 ## 安全驗證
 
 ```sh
-node --max-old-space-size=64 --test tests/precompute.test.mjs
+npm run test:precompute
 ```
 
-測試純 JS 的視角選擇、資源限制、像素格式、快速輸入競態、快取釋放、失敗重試。不要在板上安裝依賴或進行 GPU 匯出。裝置實際展示、RSS 與 FPS 留待明確授權後再測。
+測試純 JS 的視角選擇、資源限制、像素格式、快速輸入競態、快取釋放、失敗重試，以及 CLI 參數、檔案保護、寫入驗證、CDP 訊息與非 Mac 啟動保護。測試不啟動 HTTP 服務、瀏覽器或 GPU。Mac 真實 GPU 匯出尚待驗證。不要在板上安裝依賴或進行 GPU 匯出。裝置實際展示、RSS 與 FPS 留待明確授權後再測。
