@@ -1,79 +1,58 @@
-# GodEyes
+# GodEyes · 走進現場
 
-透過攝影機追蹤頭部旋轉，在瀏覽器中以水平 1：4、鉛直 1：2 的角度倍率探索 3D 場景。使用 React、TypeScript、Three.js、MediaPipe Face Landmarker 與 Spark Gaussian Splatting renderer。
+將現場照片整理為 Clean Image 與英文 Marble Prompt，生成可在瀏覽器探索的 3D Gaussian Splat 世界。兩個預建世界始終可直接開啟，Demo 不必等待新的世界生成。
 
-## 目前功能
+## 啟動（本機完整模式）
 
-- 追蹤頭部左右轉動、抬頭低頭與側傾，將估算角度映射到相機旋轉。
-- 以第一個有效姿態作為正前方與高度基準，坐高／蹲低時視角跟著升降；可隨時按「重設正前方與高度」重新設定。
-- 預設載入本機 Marble / Lofi Worlds 場景，可切換橘色格線房間；場景載入失敗時保留格線。
-- 提供螢幕尺寸與觀看距離校正、全螢幕及除錯顯示，校正資料儲存在瀏覽器 localStorage。
-- 保留 GLB 模型載入，以及模型位置、縮放與旋轉控制介面。
-
-目前主要追蹤路徑使用頭部**旋轉**，搭配 W／A／S／D 控制相機位置；頭部上下位移會平滑映射至相機高度（最多上下 0.5 公尺），左右與前後位移仍由鍵盤控制。高度使用臉部姿態矩陣的估算值，實際尺度可能因鏡頭與臉型而異。程式仍保留以位置計算 off-axis 投影的實作，供其他輸入路徑使用。水平轉頭 10° 時，相機轉動 40°；抬頭或低頭 10° 時，相機轉動 20°，側傾維持 4 倍，實際追蹤效果仍取決於攝影機與臉部辨識。
-
-## 本機啟動
-
-需要 Node.js 20.19+（20.x）或 22.12+，以及可使用攝影機、WebGL 2 和 WebAssembly 的瀏覽器。
+需要 Node.js 20.19+ / 22.12+、Python 3.10+、已登入的 Codex CLI，以及支援 WebGL 2 的瀏覽器。
 
 ```bash
-git clone https://github.com/Jimmy200504/GodEyes.git
-cd GodEyes
 npm ci
+python3 -m venv .venv
+.venv/bin/pip install -r server/requirements.txt
+cp .env.example .env  # 僅首次設定；已有 .env 時不要覆蓋
+# 在 .env 設定 WORLD_LABS_API_KEY
 npm run dev
 ```
 
-開啟終端機顯示的本機網址（通常為 `http://localhost:5173`），允許攝影機存取。執行目前前端不需要 `.env` 或 API key；MediaPipe 模型與 WASM 仍需連線下載。
+開啟 http://127.0.0.1:5173 。此指令同時啟動 Vite 與 localhost:8000 的 FastAPI 後端。Codex 使用本機登入；Marble key 只在後端讀取，不進前端 bundle 或 Codex 子程序環境。兩者都使用真實額度。
 
-1. 首次開啟時輸入螢幕寬、高與觀看距離，或略過校正。
-2. 正視螢幕，等待追蹤成功，再按右下角「重設正前方與高度」。
-3. 點擊場景後，W／S 前進後退、A／D 左右平移；按「重設位置」回到起點。轉動頭部探索場景；左上角可切換 Marble 場景與格線房間。
-4. 左下角可開啟全螢幕、校正與除錯顯示。
-5. 右上角控制面板可調整模型位置、大小與旋轉（需有效 GLB 模型）。
+只展示預建世界可用 `npm run dev:ui`，不用 API key。追蹤 WASM、模型、縮圖與 SPZ 均由本機供應；首次安裝完成後，預建場景與頭部追蹤不依賴外部 CDN。
 
-## 開發指令
+## Demo 操作
+
+1. 在世界資料庫選 Bright Truvia 或 Shared Scene v2，直接探索。
+2. 拖曳旋轉；點擊場景後用 WASD 移動；「重設」回到起點。
+3. 按「頭部追蹤」才啟動攝影機，可收合預覽、調整角度倍率，或按住停止偵測以重新擺正身體。切回滑鼠會關閉攝影機。
+4. 建立世界：命名、上傳 1–4 張同一現場的 PNG/JPEG/WebP（每張 20 MB 以下），Codex 產出一張 Clean Image 及英文 Prompt。
+5. 對照照片、編輯 Prompt，按「生成 3D 世界」。期間可探索預建世界；完成後新世界出現在列表，點擊進入。
+
+**Clean 不代表清空。** 生圖指令要求保留人物、姿勢、家具、車輛、小物件、障礙物與空間關係，只改善畫質、光線和明顯透視失真。沒有口供輸入、嫌犯推論或自動判定功能。生成影像與世界均是衍生視覺化，仍須以原圖對照；Marble 不保證精確幾何，也未實作碰撞物理。
+
+## 資料與復原
+
+- `data/<id>/` 保存原圖、Clean Image、Codex Prompt、實際提交的 `submitted-prompt.md`、operation ID、Marble 回應及下載 SPZ。`data/`、`.env`、`.venv/` 都排除版控。
+- 刷新頁面不會中斷後端任務；後端重啟可接續已有 operation ID 的 Marble 任務。單一服務程序運作，不使用多 worker。
+- Codex 生圖失敗可「接續任務」，舊輸出先封存。若缺少內建 imagegen，介面明確回報，不使用舊圖冒充新結果。
+- Marble 明確拒絕可修正後手動重試；網路中斷／5xx 若沒有 operation ID，保留提交標記、禁止重送，需先在 Marble 核對記錄。終止失敗須另建任務。
+- 可按接續任務重試查詢／下載，不會重新生成已提交的世界。原始日誌留在本機，不由 API 提供。
+
+## 指令與介面
 
 | 指令 | 用途 |
 | --- | --- |
-| `npm run dev` | 啟動 Vite 開發伺服器 |
-| `npm run build` | 產生 `dist/` 正式版檔案 |
-| `npm run preview` | 預覽正式版 |
-| `npm run lint` | 執行 ESLint |
-| `node --test tests/*.test.mjs` | 驗證旋轉映射、重設方向與鍵盤移動 |
+| `npm run dev` | 本機前端＋後端 |
+| `npm run dev:ui` | 僅前端與预建世界 |
+| `npm run typecheck` / `npm run lint` / `npm run build` | 型別、程式檢查、正式建置 |
+| `npm test` | 相機與移動測試 |
+| `.venv/bin/python -m unittest server.test_app -v` | 任務、重試、資產存取與復原測試 |
 
-部署時以 `dist/` 作為靜態網站根目錄，並使用 HTTPS 以取得攝影機權限；localhost 可用 HTTP。現有模型載入使用 `/models/shoe.glb` 絕對路徑，若部署在子路徑，需先調整資源路徑與 Vite base。
+API：`GET /api/health`、`GET/POST /api/scenes`、`GET /api/scenes/{id}`、`POST /api/scenes/{id}/world`（JSON `{prompt}`）、`POST /api/scenes/{id}/retry`、`GET /api/scenes/{id}/assets/{path}`。建立世界使用 multipart 的 `name` 與重複 `images` 欄位。服務只綁定 localhost，限制來源與可讀資產，不作公開多人服務使用。
 
-目前快照已通過正式版建置與 10 個旋轉、高度與鍵盤移動測試。`npm run lint` 目前會在載入 `@typescript-eslint/no-unused-expressions` 時因 `allowShortCircuit` 選項錯誤中止；需先修正 ESLint 與 TypeScript ESLint 的規則相容性。
+CLI 工作流程可獨立執行，見 [照片流程](scripts/case-workflow/README.md)。兩個預建世界來源見 [場景說明](public/scenes/README.md)，追蹤資源見 [本機追蹤](public/tracking/README.md)。
 
-## 專案結構
+## 整合依據
 
-```text
-src/
-  App.tsx                         主畫面與控制狀態
-  components/FaceMeshView.tsx      攝影機、臉部姿態與重設方向
-  components/ThreeView.tsx         場景容器與切換介面
-  components/CalibrationWizard.tsx 校正介面
-  components/ShoeControlPanel.tsx  模型控制面板
-  utils/headPose.ts               姿態矩陣與相對旋轉
-  utils/offAxisCamera.ts          相機旋轉與 off-axis 投影
-  utils/threeScene.ts             Three.js、GLB 與 Spark 場景
-  utils/calibration.ts            校正儲存
-public/
-  scenes/                         本機 SPZ 場景與來源說明
-  models/                         模型資源
-  media/                          既有展示素材
-tests/
-  headRotation.test.mjs           角度映射與重設測試
-```
-
-## 資源與已知限制
-
-- `public/scenes/lofi-world.spz` 是約 7.2 MB 的 500k-splat 範例，來源記錄在 [場景說明](public/scenes/README.md)。此檔案由本機提供，不需 Marble 帳號。
-- 目前 `public/models/shoe.glb`、`face.glb` 是 URL 文字佔位檔，並非 GLB 二進位檔，因此鞋子模型不能正常載入。使用模型功能前，請以有效且有權使用的 GLB 替換 `shoe.glb`。
-- `public/media/demo.gif` 與 `example.gif` 也是文字佔位檔；既有截圖不代表目前 Marble 介面。
-- 場景與模型資產的授權須依各來源確認；Spark 的軟體授權不代表外部場景素材的授權。
-- 大角度轉頭或遮住臉可能導致追蹤中斷；未偵測到臉時保留最後視角。載入失敗可按「重試」，攝影機權限被拒時需先在瀏覽器設定中允許。
-
-## 技術背景
-
-專案延續 head-coupled perspective 的探索，並加入頭部旋轉與高度追蹤與 Gaussian Splatting 場景。[HEAD_COUPLED_PERSPECTIVE.md](HEAD_COUPLED_PERSPECTIVE.md) 保留早期設計筆記；目前行為以本 README 與程式碼為準。
+- [OpenAI Codex 非互動模式](https://developers.openai.com/codex/noninteractive)：以 `codex exec --json` 追蹤工作並保存輸出。
+- [World Labs 官方範例](https://github.com/worldlabsai/worldlabs-api-examples)：非同步提交、operation 輪詢與世界資產取得。
+- 現有 `../Imagegen` 成功使用的 media upload 與 `marble-1.1` 設定保留為預設，可用 `WORLD_LABS_MODEL` 覆寫。

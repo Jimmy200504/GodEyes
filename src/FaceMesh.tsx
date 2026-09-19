@@ -8,7 +8,7 @@ import { FACEMESH_TESSELATION, FACEMESH_RIGHT_EYE, FACEMESH_LEFT_EYE, FACEMESH_R
 const FaceMesh: React.FC = () => {
   const webcamRef = useRef<Webcam | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [camera, setCamera] = useState<Camera | null>(null);
+  const camera = useRef<Camera | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -47,14 +47,13 @@ const FaceMesh: React.FC = () => {
           setIsLoading(false);
         });
       
-      setCamera(cameraInstance);
+      camera.current = cameraInstance;
     }
 
     return () => {
       // Clean up
-      if (camera) {
-        camera.stop();
-      }
+      camera.current?.stop();
+      camera.current = null;
       faceMeshInstance.close();
     };
   }, []);

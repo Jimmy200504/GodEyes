@@ -126,7 +126,7 @@ export class HeadPoseTracker {
     this.smoothingFactor = Math.max(0.1, Math.min(0.9, smoothingFactor));
   }
 
-  extractHeadPoseFromLandmarks(landmarks: any[]): HeadPose | null {
+  extractHeadPoseFromLandmarks(landmarks: { x: number; y: number; z?: number }[][]): HeadPose | null {
     if (!landmarks || landmarks.length === 0) {
       return null;
     }

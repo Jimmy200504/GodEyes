@@ -1,9 +1,10 @@
-import * as THREE from 'three';
-import { SparkRenderer, SplatMesh } from '@sparkjsdev/spark';
-import { WORLD_SCENES, WorldSceneId } from './worldScenes';
-import { HeadPose } from './headPose';
-import { OffAxisCamera } from './offAxisCamera';
-import { calibrationManager, CalibrationData } from './calibration';
+import * as THREE from "three";
+import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
+import { WorldScene } from "./worldScenes";
+import { KeyboardNavigation } from "./keyboardNavigation";
+import { HeadPose } from "./headPose";
+import { OffAxisCamera } from "./offAxisCamera";
+import { calibrationManager, CalibrationData } from "./calibration";
 
 export interface ThreeSceneOptions {
   container: HTMLElement;
@@ -25,8 +26,22 @@ export class ThreeSceneManager {
   private world: SplatMesh | null = null;
   private worldReady = false;
   private disposed = false;
+  private navigation: KeyboardNavigation;
+  private mode: "mouse" | "head" = "mouse";
+  private yaw = 0;
+  private pitch = 0;
+  private previousTime = 0;
+  private pointer: { x: number; y: number; id: number } | null = null;
+  private target: HTMLElement;
 
   constructor(options: ThreeSceneOptions) {
+    this.target = options.container;
+    this.navigation = new KeyboardNavigation(this.target);
+    this.target.addEventListener("pointerdown", this.pointerDown);
+    this.target.addEventListener("pointermove", this.pointerMove);
+    this.target.addEventListener("pointerup", this.pointerUp);
+    this.target.addEventListener("pointercancel", this.pointerUp);
+    this.target.addEventListener("lostpointercapture", this.pointerUp);
     const width = options.width || options.container.clientWidth;
     const height = options.height || options.container.clientHeight;
 
@@ -45,7 +60,7 @@ export class ThreeSceneManager {
 
     this.renderer = new THREE.WebGLRenderer({
       antialias: false,
-      alpha: false
+      alpha: false,
     });
     this.renderer.setSize(width, height);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -56,16 +71,19 @@ export class ThreeSceneManager {
     this.createDebugHelpers();
   }
 
-  async loadWorld(sceneId: WorldSceneId, onStatus: (status: 'loading' | 'ready' | 'error') => void): Promise<void> {
+  async loadWorld(
+    config: WorldScene,
+    onStatus: (status: "loading" | "ready" | "error") => void,
+  ): Promise<void> {
     if (this.disposed) return;
     if (this.world) {
       this.scene.remove(this.world);
       if (this.worldReady) this.world.dispose();
     }
     this.worldReady = false;
-    onStatus('loading');
-    const config = WORLD_SCENES.find(scene => scene.id === sceneId)!;
-    const world = new SplatMesh({ url: `${import.meta.env.BASE_URL}scenes/${config.file}` });
+    onStatus("loading");
+    this.resetView();
+    const world = new SplatMesh({ url: config.spzUrl! });
     this.world = world;
     try {
       await world.initialized;
@@ -74,20 +92,61 @@ export class ThreeSceneManager {
         return;
       }
       // Marble exports use Y-down. Align the capture origin with the resting eye.
-      world.rotation.x = Math.PI;
-      world.scale.setScalar(0.3);
-      world.position.z = calibrationManager.getCalibration().viewingDistanceCm * 0.01;
+      world.rotation.x = config.transform?.rotationX ?? Math.PI;
+      world.scale.setScalar(config.transform?.scale ?? 0.3);
+      world.position.z =
+        calibrationManager.getCalibration().viewingDistanceCm * 0.01;
       this.scene.add(world);
       this.worldReady = true;
-      onStatus('ready');
+      onStatus("ready");
     } catch (error) {
       world.dispose();
       if (this.disposed || this.world !== world) return;
       this.world = null;
-      onStatus('error');
-      console.error(`Unable to load scene ${sceneId}:`, error);
+      onStatus("error");
+      console.error(`Unable to load scene ${config.id}:`, error);
     }
   }
+
+  setMode(mode: "mouse" | "head"): void {
+    this.mode = mode;
+    this.resetView();
+  }
+
+  resetView(): void {
+    this.navigation.reset();
+    this.yaw = 0;
+    this.pitch = 0;
+    this.currentHeadPose = {
+      x: 0.5,
+      y: 0.5,
+      z: 1,
+      orientation: { x: 0, y: 0, z: 0, w: 1 },
+    };
+  }
+
+  private pointerDown = (event: PointerEvent): void => {
+    if (event.button !== 0 || this.mode !== "mouse") return;
+    this.target.focus({ preventScroll: true });
+    this.target.setPointerCapture(event.pointerId);
+    this.pointer = { x: event.clientX, y: event.clientY, id: event.pointerId };
+  };
+  private pointerMove = (event: PointerEvent): void => {
+    if (!this.pointer || this.mode !== "mouse") return;
+    this.yaw -= (event.clientX - this.pointer.x) * 0.004;
+    this.pitch = Math.max(
+      -Math.PI * 0.48,
+      Math.min(
+        Math.PI * 0.48,
+        this.pitch - (event.clientY - this.pointer.y) * 0.004,
+      ),
+    );
+    this.pointer.x = event.clientX;
+    this.pointer.y = event.clientY;
+  };
+  private pointerUp = (): void => {
+    this.pointer = null;
+  };
 
   private createDebugHelpers(): void {
     const axesHelper = new THREE.AxesHelper(0.1);
@@ -97,7 +156,7 @@ export class ThreeSceneManager {
 
     const headPositionMarker = new THREE.Mesh(
       new THREE.SphereGeometry(0.02, 8, 8),
-      new THREE.MeshBasicMaterial({ color: 0xff00ff })
+      new THREE.MeshBasicMaterial({ color: 0xff00ff }),
     );
     headPositionMarker.visible = false;
     this.debugHelpers.push(headPositionMarker);
@@ -110,14 +169,15 @@ export class ThreeSceneManager {
 
   setDebugMode(enabled: boolean): void {
     this.debugMode = enabled;
-    this.debugHelpers.forEach(helper => {
+    this.debugHelpers.forEach((helper) => {
       helper.visible = enabled;
     });
   }
 
   updateCalibration(calibration: CalibrationData): void {
     this.offAxisCamera.updateCalibration(calibration);
-    if (this.world) this.world.position.z = calibration.viewingDistanceCm * 0.01;
+    if (this.world)
+      this.world.position.z = calibration.viewingDistanceCm * 0.01;
   }
 
   private animate = (): void => {
@@ -125,13 +185,31 @@ export class ThreeSceneManager {
 
     this.animationFrameId = requestAnimationFrame(this.animate);
 
-    this.offAxisCamera.updateFromHeadPose(this.currentHeadPose);
+    const time = performance.now();
+    const seconds = this.previousTime ? (time - this.previousTime) / 1000 : 0;
+    this.previousTime = time;
+    if (this.mode === "head") {
+      this.offAxisCamera.updateFromHeadPose(this.currentHeadPose);
+    } else {
+      this.camera.position.set(
+        0,
+        0,
+        calibrationManager.getCalibration().viewingDistanceCm * 0.01,
+      );
+      this.camera.quaternion.setFromEuler(
+        new THREE.Euler(this.pitch, this.yaw, 0, "YXZ"),
+      );
+      this.camera.updateProjectionMatrix();
+    }
+    this.navigation.update(seconds, this.camera.quaternion);
+    this.camera.position.add(this.navigation.offset);
 
     if (this.debugMode && this.debugHelpers.length > 1) {
       this.debugHelpers[1].position.copy(this.camera.position);
     }
 
-    this.renderer.render(this.scene, this.camera);
+    // Spark cannot sort an empty accumulator before the first world is ready.
+    if (this.worldReady) this.renderer.render(this.scene, this.camera);
   };
 
   start(): void {
@@ -156,24 +234,49 @@ export class ThreeSceneManager {
   }
 
   dispose(): void {
+    if (this.disposed) return;
     this.disposed = true;
     this.stop();
-    // An in-flight splat is disposed by loadWorld after decoding completes.
-    if (this.worldReady) this.world?.dispose();
-    this.spark.dispose();
+    this.navigation.dispose();
+    this.target.removeEventListener("pointerdown", this.pointerDown);
+    this.target.removeEventListener("pointermove", this.pointerMove);
+    this.target.removeEventListener("pointerup", this.pointerUp);
+    this.target.removeEventListener("pointercancel", this.pointerUp);
+    this.target.removeEventListener("lostpointercapture", this.pointerUp);
+    // Stop scheduling new sorts, but allow any GPU readback already in flight to finish.
+    this.spark.autoUpdate = false;
+    this.spark.sortDirty = false;
+    clearTimeout(this.spark.updateTimeoutId);
+    clearTimeout(this.spark.sortTimeoutId);
+    const releaseRenderer = () => {
+      if (this.spark.sorting) {
+        setTimeout(releaseRenderer, 16);
+        return;
+      }
+      // An in-flight splat is disposed by loadWorld after decoding completes.
+      if (this.worldReady) this.world?.dispose();
+      this.spark.dispose();
+      this.renderer.dispose();
+    };
+    releaseRenderer();
 
-    this.debugHelpers.forEach(helper => {
-      if (helper instanceof THREE.Mesh || helper instanceof THREE.LineSegments) {
+    this.debugHelpers.forEach((helper) => {
+      if (
+        helper instanceof THREE.Mesh ||
+        helper instanceof THREE.LineSegments
+      ) {
         helper.geometry.dispose();
-        const materials = Array.isArray(helper.material) ? helper.material : [helper.material];
-        materials.forEach(material => material.dispose());
+        const materials = Array.isArray(helper.material)
+          ? helper.material
+          : [helper.material];
+        materials.forEach((material) => material.dispose());
       }
     });
 
-    this.renderer.dispose();
-
     if (this.renderer.domElement.parentElement) {
-      this.renderer.domElement.parentElement.removeChild(this.renderer.domElement);
+      this.renderer.domElement.parentElement.removeChild(
+        this.renderer.domElement,
+      );
     }
   }
 }
