@@ -1,8 +1,16 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+const proxy = {
+  '/api/pose': 'http://127.0.0.1:8765',
+  '/api/camera': {
+    target: 'http://127.0.0.1:8766',
+    rewrite: (path: string) => path.replace(/^\/api\/camera/, ''),
+  },
+};
+
 export default defineConfig({
   plugins: [react()],
-  server: { proxy: { '/api/pose': 'http://127.0.0.1:8765' } },
-  preview: { proxy: { '/api/pose': 'http://127.0.0.1:8765' } },
+  server: { proxy },
+  preview: { proxy },
 });

@@ -58,7 +58,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--camera", default="0", help="camera index or /dev/video path")
     parser.add_argument("--calibration", required=True)
-    parser.add_argument("--marker-m", type=float, default=0.055, help="measured BLACK square edge in meters (default: 0.055, current phone B)")
+    parser.add_argument("--marker-m", type=float, default=0.053, help="measured BLACK square edge in meters (default: 0.053, measured printed B)")
     parser.add_argument("--id", type=int, default=0)
     parser.add_argument("--map-id", default="screen-B", help="change if physical B moves")
     parser.add_argument("--url", default="http://127.0.0.1:8765/api/pose")

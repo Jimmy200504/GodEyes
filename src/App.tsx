@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import ThreeView from './components/ThreeView';
+import CameraPreview from './components/CameraPreview';
 import type { HeadPose } from './utils/headPose';
 import { RemotePoseTracker } from './utils/remotePose';
 
@@ -48,6 +49,7 @@ export default function App() {
 
   return <main className="h-screen w-screen relative bg-black">
     <ThreeView headPose={pose} />
+    <CameraPreview />
     <div className="absolute bottom-4 left-4 z-20 rounded-lg bg-black/80 p-4 text-white space-y-2">
       <h1 className="font-bold">GodEyes · 頭戴相機 6DoF</h1>
       <p role="status">{status}</p>

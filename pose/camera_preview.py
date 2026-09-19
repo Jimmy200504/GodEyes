@@ -15,7 +15,7 @@ PAGE = """<!doctype html><html lang="zh-Hant"><meta charset="utf-8">
 <style>body{background:#111827;color:white;font:17px system-ui;margin:24px auto;padding:0 16px;max-width:900px}img{width:100%;max-width:800px;border-radius:12px;background:black}p{line-height:1.7}a{color:#93c5fd}#status{font-size:22px;margin:16px 0}button{padding:10px}</style>
 <h1>GodEyes · 相機即時預覽</h1><div id="status" role="status">正在連線…</div>
 <img id="camera" alt="Logitech C270 即時影像"><p id="details"></p><p id="pose-status" role="status"></p>
-<p>把手機的 B 放進畫面，保留完整白邊；辨識後出現綠框與 ID 0。<br>黑色正方形邊長 5.5 cm；手機位置與顯示大小需固定。預覽和姿態傳送使用同一批影格；3D 網頁可開關姿態防抖，本頁保留原始影像晃動。</p>
+<p>把手機的 B 放進畫面，保留完整白邊；辨識後出現綠框與各自 ID。<br>目前黑色正方形實測邊長 5.3 cm；標記位置與大小需固定。預覽和姿態傳送使用同一批影格；3D 網頁可開關姿態防抖，本頁保留原始影像晃動。</p>
 <button id="full">放大畫面</button> <a id="render" target="_blank" rel="noopener">開啟 3D 場景</a>
 <script>
 const im=document.getElementById('camera'),st=document.getElementById('status');
@@ -26,9 +26,9 @@ if(!r.ok)throw Error();const u=URL.createObjectURL(await r.blob()),old=im.src;im
 if(old.startsWith('blob:'))URL.revokeObjectURL(old);}catch{st.textContent='鏡頭畫面暫時無法取得';}setTimeout(frame,33);}
 async function status(){try{const r=await fetch('/status',{cache:'no-store',signal:AbortSignal.timeout(2000)}),s=await r.json();
 const fresh=s.age_ms!==null&&s.age_ms<1000;
-st.textContent=s.error?'相機錯誤：'+s.error:!fresh?'等待新影格…':s.found?'已偵測到 B（ID 0）':'尚未偵測到 B，請調整相機／手機方向';
+st.textContent=s.error?'相機錯誤：'+s.error:!fresh?'等待新影格…':s.found?'已偵測到定位標記':'尚未偵測到 B，請調整相機／手機方向';
 st.style.color=fresh&&s.found?'#86efac':'#fbbf24';
-document.getElementById('details').textContent=`${s.width} × ${s.height} · 處理約 ${s.fps} FPS · ID：${s.ids.join(', ')||'無'} · B 最短邊 ${s.min_side_px} px`;
+document.getElementById('details').textContent=`${s.width} × ${s.height} · 處理約 ${s.fps} FPS · ID：${s.ids.join(', ')||'無'} · 標記最短邊 ${s.min_side_px} px · 參與定位：${(s.used_ids||[]).join(', ')||'無'}`;
 const why={calibration_required:'尚未校正，未啟用姿態追蹤',resolution_mismatch:'影像尺寸不符校正',marker_missing_or_duplicate:'找不到唯一 B',marker_too_small:'B 太小，請靠近',pose_quality_rejected:'姿態解算品質不足'};
 document.getElementById('pose-status').textContent=s.pose_tracking==='tracking'?(s.scale==='estimated'?'姿態解算中 · 未校正粗估，距離與角度可能有誤差':'姿態解算中 · 已載入校正'):(why[s.pose_reason]||'等待姿態解算');
 }catch{st.textContent='預覽連線中斷';}setTimeout(status,500);}frame();status();
@@ -76,14 +76,15 @@ class Camera:
                     (frame.shape[1], frame.shape[0]), captured)
                 self.sender.put(packet, captured)
                 values = [] if ids is None else [int(v) for v in ids.flatten()]
-                found = values.count(0) == 1
+                seen_targets = [i for i in self.pipeline.target_ids if values.count(i) == 1]
+                found = bool(seen_targets)
                 shortest = 0
                 if found:
-                    points = corners[values.index(0)].reshape(4,2)
+                    points = corners[values.index(seen_targets[0])].reshape(4,2)
                     shortest = round(float(np.min(np.linalg.norm(points-np.roll(points,1,axis=0),axis=1))),1)
                 if ids is not None:
                     cv2.aruco.drawDetectedMarkers(frame, corners, ids)
-                cv2.putText(frame, 'B detected - ID 0' if found else 'Looking for B (ID 0)',
+                cv2.putText(frame, 'Seen: ' + ','.join(map(str,seen_targets)) if found else 'Looking for board markers',
                     (12,30), cv2.FONT_HERSHEY_SIMPLEX, .65, (0,255,0) if found else (0,190,255), 2)
                 ok, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY,80])
                 if not ok:
@@ -97,6 +98,7 @@ class Camera:
                     self.state = dict(found=found,ids=values,fps=round(fps,1),width=frame.shape[1],
                         height=frame.shape[0],min_side_px=shortest,error=None,
                         pose_tracking=packet['tracking'], pose_reason=packet['tracking_reason'],
+                        used_ids=packet['used_ids'], target_ids=packet['target_ids'],
                         scale=packet['scale'], position=packet['position'],
                         reprojection_error_px=reprojection)
         except Exception as error:
@@ -140,12 +142,13 @@ if __name__ == '__main__':
     parser.add_argument('--camera',default='/dev/video2')
     parser.add_argument('--host',default='127.0.0.1')
     parser.add_argument('--port',type=int,default=8766)
+    parser.add_argument('--board', help='fixed board layout JSON; scaled by --marker-m')
     parser.add_argument('--calibration', help='camera.json from real calibration')
     parser.add_argument('--approximate', action='store_true', help='rough demo intrinsics; NOT calibrated metric tracking')
-    parser.add_argument('--marker-m', type=float, default=.055)
+    parser.add_argument('--marker-m', type=float, default=.053)
     parser.add_argument('--url', default='http://127.0.0.1:8765/api/pose')
     args = parser.parse_args()
-    pipeline = PosePipeline(args.marker_m, args.calibration, args.approximate)
+    pipeline = PosePipeline(args.marker_m, args.calibration, args.approximate, args.board)
     sender = LatestSender(args.url)
     camera = Camera(int(args.camera) if args.camera.isdecimal() else args.camera, pipeline, sender)
     server = make_server(camera,args.host,args.port)

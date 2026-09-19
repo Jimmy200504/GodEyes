@@ -10,7 +10,7 @@
 
 ## 先用手機螢幕測試
 
-目前使用者已量得 B 黑色外緣邊長 **5.5 cm**，傳送器預設為 `--marker-m 0.055`。只要手機顯示大小保持不變，就可直接使用；若 5.5 cm 含白邊，需重新量黑色正方形。
+目前列印後 B 黑色外緣實測為 **5.3 cm**，追蹤器預設為 `--marker-m 0.053`，以實物而非 PDF 標示尺寸為準。原手機版本曾使用 5.5 cm，若換回手機需重新量測並指定尺寸。量測不含白邊。
 
 下載 [ArUco B PNG](../public/markers/aruco-B-4x4-50-id0.png)（DICT_4X4_50，ID 0，已自動驗證可辨識）。手機顯示原圖，保留四周完整白邊；關閉自動旋轉與自動鎖屏，顯示大小固定後將手機固定在螢幕旁。避免反光和過曝，亮度以相機中黑白邊界清楚為準。
 
@@ -70,7 +70,7 @@ npm run dev
 邊緣裝置只需 `pose/`、其 Python 依賴與 `camera.json`；不需前端資產。停止 mock_sender，執行：
 
 ```sh
-python3 pose/aruco_sender.py --camera 0 --calibration camera.json --id 0 --marker-m 0.055 --url http://RENDER_PC_IP:8765/api/pose
+python3 pose/aruco_sender.py --camera 0 --calibration camera.json --id 0 --marker-m 0.053 --url http://RENDER_PC_IP:8765/api/pose
 ```
 
 相機可改為 `/dev/video2`。同機驗證則用 `http://127.0.0.1:8765/api/pose`。有 GUI 可加 `--preview`，Q 離開；預設 headless，不開視窗。開啟渲染電腦的 Vite 網址，看到 `追蹤中：aruco-B` 後按「重設位置與正前方」。
@@ -109,7 +109,7 @@ python3 -m unittest discover -s pose -p 'test_*.py'
 - 正式模式：`python3 pose/camera_preview.py --host 0.0.0.0 --calibration camera.json`。
 - 目前 demo：`python3 pose/camera_preview.py --host 0.0.0.0 --approximate`。
 
-粗估模式假設 fx=fy=影像寬度、主點在中心、畸變為零；這不是 C270 的實測內參。它用真實 ArUco 角點與 5.5 cm 尺寸估姿態，供驗證串接；API 的 scale 是 `estimated`，網頁明確標示未校正，不能視為精確公尺與角度。正式模式的 scale 才是 `metric`。兩種模式切換後重設原點。
+粗估模式假設 fx=fy=影像寬度、主點在中心、畸變為零；這不是 C270 的實測內參。它用真實 ArUco 角點與目前 5.3 cm 實測尺寸估姿態，供驗證串接；API 的 scale 是 `estimated`，網頁明確標示未校正，不能視為精確公尺與角度。正式模式的 scale 才是 `metric`。兩種模式切換後重設原點。
 
 未提供任何模式時，預覽仍送 `initializing` 和 `calibration_required`，網站會說明原因，不再只顯示等待裝置。辨識到 tag 但角點太小或 PnP 品質不足則送 lost 及具體原因。
 
@@ -122,3 +122,13 @@ python3 -m unittest discover -s pose -p 'test_*.py'
 16–23 FPS 的偵測更新間隔約 43–63 ms。預覽網頁原先每次下載一張 JPEG 後再等 100 ms，限制了顯示流暢度；現改成 33 ms，實際顯示率仍受傳輸、解碼和相機處理率限制；頁面上的 FPS 是相機處理率，不是瀏覽器顯示率，也不是 NPU 使用率。平滑會增加延遲，需要實際擺頭比較，不承諾更準。
 
 失去 B 時：後端保留最後有效 pose 並標為 lost，前端不把 lost 封包中的位置套到相機；不回原點、不自動重設基準。防抖開啟時，找回 B 的第一筆保留停住的畫面，後續有效資料才平滑跟上。關閉防抖仍會在失去追蹤時凍結，但恢復使用原始姿態。
+
+列印版實測 5.3 cm：原 PDF 和版面 JSON 仍描述設計的 5.5 cm。單 tag 追蹤已改用 0.053 m；接多 tag board 前，需量測實際中心間距或確認整張是否等比例縮放，不能直接沿用原 90 mm 間距。
+
+## 整張 A4 四標記模式
+
+目前使用者確認未裁切，啟用：`python3 pose/camera_preview.py --host 0.0.0.0 --approximate --marker-m 0.053 --board public/markers/aruco-board-A4-55mm-ids0-3.json`。
+
+ID 0～3 共用版面中央原點，任何一張清楚可見時都可定位；多張同時可見時一起解 PnP。可見標記切換不會切換世界原點。前端右下角顯示看到的 ID 和實際參與定位的 ID。
+
+此設定假設整頁從設計的 55 mm 等比例缩為實測 53 mm，中心間距預期為 90×53/55 ≈ 86.73 mm；請量測確認。若裁切後重排、印表機非等比例縮放、紙張彎曲或實際間距不同，就要更新 layout，不能沿用。多標記提高可見率，不保證增加 FPS；目前仍是未校正內參的粗估模式。

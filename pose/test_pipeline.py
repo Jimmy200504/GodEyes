@@ -26,7 +26,7 @@ class PipelineTests(unittest.TestCase):
         self.assertIsNone(error)
 
     def test_approximate_mode_publishes_but_labels_scale(self):
-        pipeline = PosePipeline(approximate=True)
+        pipeline = PosePipeline(marker_m=.055, approximate=True)
         packet,error = pipeline.update(self.corners,self.ids,(640,480),time.monotonic())
         validate(packet)
         self.assertEqual(packet['tracking'],'tracking')
@@ -42,7 +42,7 @@ class PipelineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             path=Path(folder)/'camera.json'
             path.write_text(json.dumps(dict(camera_matrix=self.k.tolist(),dist_coeffs=[0]*5,image_size=[640,480])))
-            pipeline=PosePipeline(calibration=path)
+            pipeline=PosePipeline(marker_m=.055, calibration=path)
             packet,_=pipeline.update(self.corners,self.ids,(640,480),time.monotonic())
             validate(packet)
             self.assertEqual(packet['tracking'],'tracking')

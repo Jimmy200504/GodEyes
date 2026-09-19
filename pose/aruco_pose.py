@@ -43,10 +43,16 @@ def quaternion_xyzw(r):
 def solve_marker(corners, side, k, dist, max_error=2.0):
     points = square_points(side)
     pixels = np.asarray(corners, np.float64).reshape(4, 2)
-    if not np.isfinite(pixels).all():
+    return solve_points(points, pixels, k, dist, cv2.SOLVEPNP_IPPE_SQUARE, max_error)
+
+
+def solve_points(points, pixels, k, dist, method=cv2.SOLVEPNP_IPPE, max_error=2.0):
+    points = np.asarray(points, np.float64).reshape(-1, 3)
+    pixels = np.asarray(pixels, np.float64).reshape(-1, 2)
+    if len(points) < 4 or len(points) != len(pixels) or not np.isfinite(pixels).all() or not np.isfinite(points).all():
         return None
     ok, rotations, translations, _ = cv2.solvePnPGeneric(
-        points, pixels, k, dist, flags=cv2.SOLVEPNP_IPPE_SQUARE)
+        points, pixels, k, dist, flags=method)
     if not ok:
         return None
     candidates = []
@@ -58,7 +64,7 @@ def solve_marker(corners, side, k, dist, max_error=2.0):
         if np.any((points @ rotation.T + translation)[:, 2] <= 0):
             continue
         projected, _ = cv2.projectPoints(points, rvec, tvec, k, dist)
-        error = float(np.sqrt(np.mean(np.sum((projected.reshape(4, 2) - pixels)**2, axis=1))))
+        error = float(np.sqrt(np.mean(np.sum((projected.reshape(-1, 2) - pixels)**2, axis=1))))
         if error <= max_error:
             candidates.append((error, rotation, translation))
     if not candidates:
