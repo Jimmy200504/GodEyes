@@ -19,7 +19,7 @@ export default function App() {
   const [estimated, setEstimated] = useState(false);
   const [gestureTelemetry, setGestureTelemetry] = useState<GestureTelemetry | null>(null);
   const [gestureStatus, setGestureStatus] = useState('等待手勢 NPU');
-  const [gain, setGain] = useState(5);
+  const [gain, setGain] = useState(1.5);
   const [status, setStatus] = useState('等待邊緣裝置');
 
   const scaledPose = useMemo(() => pose && pose.position ? { ...pose, position: { x: pose.position.x * gain, y: pose.position.y * gain, z: pose.position.z * gain } } : pose, [pose, gain]);
