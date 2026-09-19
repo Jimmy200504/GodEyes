@@ -12,6 +12,8 @@ export interface PosePacket {
   tracking: 'initializing' | 'tracking' | 'lost' | 'relocalizing';
   scale: 'metric' | 'arbitrary' | 'estimated';
   tracking_reason?: string | null;
+  reset_reason?: string | null;
+  previous_session_id?: string | null;
   position: [number, number, number];
   quaternion_xyzw: [number, number, number, number];
 }
@@ -20,12 +22,16 @@ export interface PosePacket {
 export class RemotePoseTracker {
   private origin: { position: Vector3; rotation: Quaternion } | null = null;
   private epoch = '';
+  private offsetPosition = new Vector3();
+  private offsetRotation = new Quaternion();
+  private lastPosition = new Vector3();
+  private lastRotation = new Quaternion();
   private lastSeq = -1;
   private blocked = false;
   status = '等待姿態';
   private smoother = new AdaptivePoseSmoother();
 
-  constructor(private smoothing = false) {}
+  constructor(private smoothing = false, private allowArbitrary = false, private autoRebuild = false) {}
 
   setSmoothing(enabled: boolean): void {
     this.smoothing = enabled;
@@ -38,6 +44,10 @@ export class RemotePoseTracker {
     this.smoother.reset();
     this.origin = null;
     this.epoch = '';
+    this.offsetPosition.set(0, 0, 0);
+    this.offsetRotation.identity();
+    this.lastPosition.set(0, 0, 0);
+    this.lastRotation.identity();
     this.lastSeq = -1;
     this.blocked = false;
   }
@@ -48,7 +58,23 @@ export class RemotePoseTracker {
       this.status = '資料過期，視角已凍結'; return null;
     }
     const epoch = JSON.stringify([p.session_id, p.map_id]);
-    if (this.epoch && epoch !== this.epoch) this.blocked = true;
+    if (this.epoch && epoch !== this.epoch && !this.blocked) {
+      const previous = p.previous_session_id;
+      const expected = typeof previous === 'string' && previous.length > 0
+        && this.epoch === JSON.stringify([previous, 'sparse-' + previous]);
+      if (this.autoRebuild && expected && p.reset_reason === 'lost_timeout'
+          && p.map_id === 'sparse-' + p.session_id
+          && (p.source === 'cpu-sparse-vo-local' || p.source === 'cpu-sparse-vo')
+          && p.scale === 'arbitrary') {
+        // Preserve the last measured view; this is a display rebase, NOT map fusion.
+        this.offsetPosition.copy(this.lastPosition);
+        this.offsetRotation.copy(this.lastRotation);
+        this.origin = null;
+        this.epoch = epoch;
+        this.lastSeq = -1;
+        this.smoother.reset();
+      } else this.blocked = true;
+    }
     if (this.blocked) { this.status = '地圖或工作階段已變更，請重設原點'; return null; }
     if (p.tracking !== 'tracking') {
       this.hold();
@@ -59,10 +85,12 @@ export class RemotePoseTracker {
         marker_too_small: 'B 太小，請靠近相機',
         pose_quality_rejected: '已辨識 B，但姿態解算品質不足',
       };
-      this.status = reasons[p.tracking_reason ?? ''] ?? `追蹤狀態：${p.tracking}`;
+      this.status = p.tracking === 'initializing' && p.reset_reason === 'lost_timeout'
+        ? '已自動重建地圖，請緩慢側移初始化'
+        : reasons[p.tracking_reason ?? ''] ?? `追蹤狀態：${p.tracking}`;
       return null;
     }
-    if (p.scale !== 'metric' && p.scale !== 'estimated') { this.hold(); this.status = '尚未校正公尺尺度，視角已凍結'; return null; }
+    if (p.scale !== 'metric' && p.scale !== 'estimated' && !(this.allowArbitrary && p.scale === 'arbitrary')) { this.hold(); this.status = '尚未校正公尺尺度，視角已凍結'; return null; }
     if (p.seq <= this.lastSeq) return null;
     this.epoch = epoch;
     this.lastSeq = p.seq;
@@ -72,14 +100,21 @@ export class RemotePoseTracker {
     const inverse = this.origin.rotation.clone().invert();
     position.sub(this.origin.position).applyQuaternion(inverse);
     rotation.premultiply(inverse);
-    this.status = p.scale === 'estimated' ? '追蹤中 · 未校正粗估（距離與角度非精確值）'
+    position.applyQuaternion(this.offsetRotation).add(this.offsetPosition);
+    rotation.premultiply(this.offsetRotation);
+    this.status = p.scale === 'arbitrary' ? '無標記追蹤中 · 任意尺度（非公尺）' : p.scale === 'estimated' ? '追蹤中 · 未校正粗估（距離與角度非精確值）'
       : p.source === 'mock' ? '模擬資料（非相機追蹤）' : `追蹤中：${p.source}`;
     const pose: HeadPose = {
       x: 0.5, y: 0.5, z: 1,
       position: { x: position.x, y: -position.y, z: -position.z },
       orientation: { x: rotation.x, y: -rotation.y, z: -rotation.z, w: rotation.w },
     };
-    return this.smoothing ? this.smoother.update(pose, p.capture_monotonic_ns / 1e9) : pose;
+    const output = this.smoothing ? this.smoother.update(pose, p.capture_monotonic_ns / 1e9) : pose;
+    if (output.position && output.orientation) {
+      this.lastPosition.set(output.position.x, -output.position.y, -output.position.z);
+      this.lastRotation.set(output.orientation.x, -output.orientation.y, -output.orientation.z, output.orientation.w);
+    }
+    return output;
   }
 }
 

@@ -1,6 +1,8 @@
 import { Euler, Matrix4, Quaternion, Vector3 } from 'three';
 
 export interface HeadPose {
+  sampleTimeMs?: number;
+  ageMs?: number;
   x: number;
   y: number;
   z: number;

@@ -1,0 +1,6 @@
+**
+!native/
+!native/orbslam3/
+!native/orbslam3/**
+!pose/
+!pose/orbslam3_settings.py

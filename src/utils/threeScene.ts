@@ -266,9 +266,11 @@ export class ThreeSceneManager {
   }
 
   updateHeadPose(headPose: HeadPose): void {
-    this.renderPose.setTarget(headPose, performance.now());
+    this.renderPose.setTarget(headPose, performance.now(), Math.max(0, 250-(headPose.ageMs ?? 0)));
   }
 
+  coastHeadPose(): void { this.renderPose.coast(); }
+  setPosePrediction(enabled: boolean): void { this.renderPose.predictionEnabled = enabled; this.renderPose.hold(); }
   holdHeadPose(): void { this.renderPose.hold(); }
   resetHeadPose(): void { this.renderPose.reset(); }
   setRenderSmoothing(enabled: boolean): void { this.renderPose.enabled = enabled; }

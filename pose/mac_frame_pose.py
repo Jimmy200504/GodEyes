@@ -73,10 +73,22 @@ class Preview:
         self.state = dict(ids=[], fps=0, error='waiting for board frames')
 
 
-def make_preview_server(preview, port):
+def make_preview_server(preview, port, reset=None):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):
             pass
+
+        def do_POST(self):
+            if self.path != "/reset" or reset is None:
+                self.send_error(404)
+                return
+            reset.set()
+            body = b'{"reset_pending":true}'
+            self.send_response(202)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
 
         def do_GET(self):
             path = self.path.split('?', 1)[0]
@@ -128,12 +140,18 @@ def receive(url, processor, store, preview):
                         with preview.lock:
                             preview.state.update(error='frame older than 250 ms (conservative bound)', stale_frames=stale)
                         continue
-                    packet, jpeg, status = processor.process(message)
+                    try:
+                        packet, jpeg, status = processor.process(message)
+                    except cv2.error as error:
+                        # A connected camera cannot fix a processing bug by reconnecting.
+                        raise RuntimeError('Frame processing failed after receiving camera data: ' + str(error)) from error
                     now = time.monotonic()
                     if now-captured_bound > .25:
                         stale += 1
                         with preview.lock:
-                            preview.state.update(error='processing exceeded 250 ms age budget', stale_frames=stale)
+                            preview.state.update(status, error='processing exceeded 250 ms age budget',
+                                                 stale_frames=stale,
+                                                 age_upper_bound_ms=round((now-captured_bound)*1000, 2))
                         continue
                     if meta['session'] == last_session:
                         skipped += max(0, meta['seq']-last_seq-1)

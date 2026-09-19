@@ -79,7 +79,7 @@ def make_frame_server(frames, host='127.0.0.1', port=8781):
     return serve(handler, host, port, compression=None, max_size=64, max_queue=1, close_timeout=.5)
 
 
-def capture_loop(device, quality, frames, stop):
+def capture_loop(device, quality, frames, stop, grayscale=False):
     cap = cv2.VideoCapture(device, cv2.CAP_V4L2)
     start, session = time.monotonic(), str(uuid.uuid4())
     try:
@@ -96,12 +96,15 @@ def capture_loop(device, quality, frames, stop):
             captured = time.monotonic()
             if not ok or frame.shape[:2] != (480, 640):
                 raise RuntimeError('camera read failed or resolution is not 640x480')
+            if grayscale:
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             ok, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
             if not ok:
                 raise RuntimeError('JPEG encode failed')
             now = time.monotonic()
             meta = dict(version=1, session=session, seq=seq,
                         capture_ns=int((captured-start)*1e9), width=640, height=480,
+                        pixel_format='gray8' if grayscale else 'bgr8',
                         capture_ms=round((captured-begun)*1000, 2),
                         encode_ms=round((now-captured)*1000, 2))
             frames.put(meta, jpeg.tobytes(), captured)
@@ -123,12 +126,13 @@ def main():
     parser.add_argument('--camera', default='/dev/video2')
     parser.add_argument('--host', default='127.0.0.1')
     parser.add_argument('--port', type=int, default=8781)
+    parser.add_argument('--grayscale', action='store_true', help='Encode monochrome JPEG for Mac-side SLAM')
     parser.add_argument('--quality', type=int, choices=range(1, 101), default=90, metavar='1..100')
     args = parser.parse_args()
     frames, stop = LatestFrame(), threading.Event()
     device = int(args.camera) if args.camera.isdecimal() else args.camera
     with make_frame_server(frames, args.host, args.port) as server:
-        worker = threading.Thread(target=capture_loop, args=(device, args.quality, frames, stop), daemon=True)
+        worker = threading.Thread(target=capture_loop, args=(device, args.quality, frames, stop, args.grayscale), daemon=True)
         worker.start()
         print(f'JPEG stream ws://{args.host}:{args.port}/frames (no pose computation)', flush=True)
         try:

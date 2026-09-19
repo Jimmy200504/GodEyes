@@ -44,3 +44,30 @@ test('background tab resume bounds movement even if fresh targets kept arriving'
  f.setTarget(pose(1),1000);const out=f.step(1000);
  assert.ok(out.position.x>0&&out.position.x<.9);
 });
+
+test('optional rotation prediction follows source-time velocity and expires without drifting',()=>{
+ const f=new RenderPoseSmoother();f.enabled=false;f.predictionEnabled=true;
+ f.setTarget({...pose(0,0),sampleTimeMs:0},1000);f.step(1000);
+ f.setTarget({...pose(1,.1),sampleTimeMs:50},1070);
+ const predicted=f.step(1095);
+ assert.ok(q(predicted).angleTo(q(pose(0,.15)))<1e-5);
+ assert.equal(predicted.position.x,1); // rotation only, no invented translation
+ f.coast();const held=f.step(1169);f.coast();
+ assert.deepEqual(f.step(1170),held);assert.deepEqual(f.step(2000),held);
+});
+test('hard hold, reset and large source-time gaps discard prediction velocity',()=>{
+ const f=new RenderPoseSmoother();f.enabled=false;f.predictionEnabled=true;
+ f.setTarget({...pose(0),sampleTimeMs:0},0);f.setTarget({...pose(0,.1),sampleTimeMs:50},50);
+ const held=f.step(60);f.hold();assert.deepEqual(f.step(90),held);
+ f.setTarget({...pose(0,.2),sampleTimeMs:100},100);
+ assert.ok(q(f.step(125)).angleTo(q(pose(0,.2)))<1e-5);
+ f.setTarget({...pose(0,.4),sampleTimeMs:500},500);
+ assert.ok(q(f.step(550)).angleTo(q(pose(0,.4)))<1e-5);
+ f.reset();f.setTarget(pose(0),600);assert.ok(q(f.step(620)).angleTo(q(pose(0)))<1e-5);
+});
+test('prediction respects remaining freshness and quaternion wraparound',()=>{
+ const f=new RenderPoseSmoother();f.enabled=false;f.predictionEnabled=true;
+ f.setTarget(pose(0,179*Math.PI/180),0);f.setTarget(pose(0,-179*Math.PI/180),50,20);
+ const out=f.step(60);assert.ok(q(out).angleTo(q(pose(0,-178.6*Math.PI/180)))<1e-5);
+ assert.deepEqual(f.step(70),out);assert.deepEqual(f.step(100),out);
+});
