@@ -56,7 +56,7 @@ class PosePipeline:
                     if np.min(np.linalg.norm(pixels-np.roll(pixels,1,axis=0),axis=1)) < 20:
                         reason = 'marker_too_small'
                     else:
-                        result = solve_marker(pixels,self.marker_m,k,dist)
+                        result = solve_marker(pixels,self.marker_m,k,dist,max_error=float("inf"))
                         if result is None:
                             reason = 'pose_quality_rejected'
                         else:

@@ -65,7 +65,7 @@ def solve_points(points, pixels, k, dist, method=cv2.SOLVEPNP_IPPE, max_error=2.
             continue
         projected, _ = cv2.projectPoints(points, rvec, tvec, k, dist)
         error = float(np.sqrt(np.mean(np.sum((projected.reshape(-1, 2) - pixels)**2, axis=1))))
-        if error <= max_error:
+        if np.isfinite(error) and error <= max_error:
             candidates.append((error, rotation, translation))
     if not candidates:
         return None

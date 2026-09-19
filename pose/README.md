@@ -79,7 +79,7 @@ python3 pose/aruco_sender.py --camera 0 --calibration camera.json --id 0 --marke
 
 ## 4. 品質與限制
 
-- 只接受指定 ID 且至少每邊 20 px 的標記，使用角點細化、IPPE square 的候選解、正深度與預設 2 px RMS 重投影門檻。門檻是初始設定，需按真機影像調整。
+- 只接受指定 ID 且至少每邊 20 px 的標記，使用角點細化與正深度候選解。目前相機預覽／姿態 pipeline 不以重投影誤差設硬門檻，任何單一 ID 0～3 都可定位；仍記錄 RMS 供診斷。獨立 aruco_sender CLI 保留可設定的誤差門檻。
 - 看不到 B、重複 ID 或解算品質不足會送 `lost`；相機讀取失敗則結束，前端依資料過期凍結。
 - 網路 worker 只保留一筆最新結果，發送前超過 250 ms 的資料丟棄，請求 timeout 250 ms，故障時持續重試。這是開發版 HTTP 傳輸，不保證總延遲上限。
 - 一般 OpenCV webcam 讀取無硬體曝光時間戳；`capture_monotonic_ns` 在本來源實際是 **read 完成時間**（相對 session），不含驅動緩衝與曝光等待。`CAP_PROP_BUFFERSIZE=1` 是 best effort，端到端延遲需實測。
@@ -172,3 +172,5 @@ python3 -m venv --system-site-packages .venv
 本機已在 2026-09-19 完成實際 16 視角校正並套用：RMS 0.123 px，保留視角 RMS 0.153 px／最大0.177 px。去除影像路徑的內參備份為 `pose/calibrations/logitech-c270-640x480.json`，可用 `--calibration pose/calibrations/logitech-c270-640x480.json` 重啟；此參數只適用這顆 C270、640×480、相同光學設定。實際距離仍需量尺驗證，不能從重投影誤差直接推算毫米精度。
 
 本次驗證：Python 21 項、Node 23 項測試通過，Vite build 通過；完整 app TypeScript 檢查仍有既有 `ModelViewer.tsx`／`useFaceLandmarker.ts` 錯誤，本次變更檔未出現新型別錯誤。
+
+依 demo 操作需求，已移除即時 pipeline 的 2 px RMS 淘汰條件；單標記與多標記均接受可求出的有限值、正深度姿態。斜視／模糊時可繼續跟隨，但精度與穩定度可能下降；不是改掉校正時的品質驗證。

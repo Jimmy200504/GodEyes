@@ -42,5 +42,7 @@ def estimate_board(corners, ids, board, k, dist, min_side=20):
         objects.extend(board[marker_id]); pixels.extend(image); used.append(marker_id)
     if not used:
         return None, [], 'marker_too_small' if known else 'marker_missing_or_duplicate'
-    pose = solve_points(objects,pixels,k,dist)
+    # Keep finite, positive-depth solutions even with a large reprojection residual.
+    # A single visible board ID is enough; residual remains available for diagnostics.
+    pose = solve_points(objects,pixels,k,dist,max_error=float("inf"))
     return (pose,sorted(used),None) if pose else (None,[],'pose_quality_rejected')

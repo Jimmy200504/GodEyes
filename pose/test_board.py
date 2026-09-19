@@ -51,6 +51,23 @@ class BoardTests(unittest.TestCase):
         self.assertEqual(lost['position'],poses[-1]['position'])
         self.assertEqual(lost['used_ids'],[])
 
+    def test_noisy_single_or_multiple_tags_are_not_frozen_by_two_pixel_gate(self):
+        for visible in ([0], [1], [2], [3], [0,1,2,3]):
+            with self.subTest(visible=visible):
+                corners,ids = self.observations(visible)
+                corners[0][0,0] += [25,10]
+                result,used,reason = estimate_board(corners,ids,self.board,self.k,self.dist)
+                self.assertIsNone(reason)
+                self.assertEqual(used,visible)
+                self.assertGreater(result['reprojection_error_px'],2)
+                self.assertTrue(np.isfinite(result['position']).all())
+                pipeline = PosePipeline(marker_m=.053,approximate=True,board_path=BOARD)
+                packet,_ = pipeline.update(corners,ids,(640,480),time.monotonic())
+                self.assertEqual(packet['tracking'],'tracking')
+                lost,_ = pipeline.update([],None,(640,480),time.monotonic())
+                self.assertEqual(lost['tracking'],'lost')
+                self.assertEqual(lost['position'],packet['position'])
+
     def test_print_scale_and_duplicate_id_handling(self):
         np.testing.assert_allclose(np.linalg.norm(self.board[0]-np.roll(self.board[0],1,axis=0),axis=1),.053)
         centers = [self.board[i].mean(axis=0) for i in (0,1)]
