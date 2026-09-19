@@ -90,6 +90,8 @@ def inference_loop(args, tracker, classifier, latest, stop):
                     requested = time.monotonic()
                     connection.send('next')
                     meta, jpeg = unpack_frame(connection.recv(timeout=2))
+                    if meta.get('pixel_format') == 'gray8':
+                        raise ValueError('Gesture input is grayscale; use --dual-stream and /frames/color')
                     # Include request/transport time conservatively; clocks need not match.
                     captured = requested - meta['age_ns'] / 1e9
                     key = (meta['session'], meta['seq'])
@@ -137,7 +139,7 @@ def make_server(latest, host, port):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--frames', default='ws://127.0.0.1:8781/frames')
+    parser.add_argument('--frames', default='ws://127.0.0.1:8781/frames/color')
     parser.add_argument('--host', default='127.0.0.1')
     parser.add_argument('--port', type=int, default=8782)
     parser.add_argument('--mirror', action='store_true', help='reverse camera left/right for a front-facing camera')

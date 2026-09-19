@@ -36,6 +36,35 @@ class LocalSlamTests(unittest.TestCase):
         self.assertNotEqual(restarted['map_id'], reset['map_id'])
         self.assertFalse(processor.reset.is_set())
 
+    def test_color_and_monochrome_jpeg_use_the_same_slam_protocol(self):
+        # Use genuinely different B/G/R channels, not just a gray image in a
+        # three-channel array, to catch color-input shape/conversion regressions.
+        color = np.zeros((480, 640, 3), np.uint8)
+        color[:, :213, 0] = 255
+        color[:, 213:426, 1] = 255
+        color[:, 426:, 2] = 255
+        processor = SlamFrameProcessor(str(ROOT/'pose/calibrations/logitech-c270-640x480.json'))
+        try:
+            for seq, (image, pixel_format) in enumerate([
+                (color, 'bgr8'), (cv2.cvtColor(color, cv2.COLOR_BGR2GRAY), 'gray8'),
+            ]):
+                with self.subTest(pixel_format=pixel_format):
+                    jpeg = cv2.imencode('.jpg', image)[1].tobytes()
+                    packet, preview, status = processor.process(pack_frame(
+                        dict(metadata(seq), pixel_format=pixel_format), jpeg))
+                    validate(packet)
+                    self.assertEqual(status['processing_size'], [320, 240])
+                    self.assertEqual(cv2.imdecode(np.frombuffer(preview, np.uint8), cv2.IMREAD_UNCHANGED).shape, (240, 320))
+                    # Gesture service's IMREAD_COLOR produces the same input
+                    # shape for either stream; gray channels must be identical.
+                    gesture_frame = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
+                    self.assertEqual(gesture_frame.shape, (480, 640, 3))
+                    if pixel_format == 'gray8':
+                        np.testing.assert_array_equal(gesture_frame[:, :, 0], gesture_frame[:, :, 1])
+                        np.testing.assert_array_equal(gesture_frame[:, :, 1], gesture_frame[:, :, 2])
+        finally:
+            processor.close()
+
     def test_intrinsics_and_optional_features_survive_downsampling(self):
         path = str(ROOT/'pose/calibrations/logitech-c270-640x480.json')
         full = SlamFrameProcessor(path, process_width=640, synthetic_bridge=True)

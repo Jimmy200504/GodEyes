@@ -62,8 +62,7 @@ while time.monotonic() < deadline:
             frame = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
             if frame is None or frame.shape[:2] != (480, 640):
                 raise ValueError('相機 JPEG 解碼失敗或尺寸錯誤')
-            if meta.get('pixel_format') == 'gray8':
-                raise SystemExit('手勢模型需要彩色串流，請移除板端 frame_stream.py 的 --grayscale 再啟動。')
+            print('串流格式：' + str(meta.get('pixel_format', '未標示')) + '；此路徑供 SLAM 使用，手勢由板端另讀彩色路徑。', flush=True)
             print(f"已經由 SSH 收到相機影像：640×480，seq={meta['seq']}，平均亮度={frame.mean():.1f}", flush=True)
         break
     except (OSError, WebSocketException, TimeoutError, ValueError, cv2.error) as error:

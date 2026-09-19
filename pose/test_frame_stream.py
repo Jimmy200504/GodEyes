@@ -5,11 +5,12 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import patch, MagicMock
 import cv2
 import numpy as np
 from websockets.sync.client import connect
 from aruco_pose import DICTIONARY, square_points
-from frame_stream import LatestFrame, make_frame_server, pack_frame, unpack_frame
+from frame_stream import capture_loop, LatestFrame, make_frame_server, pack_frame, unpack_frame
 from mac_frame_pose import FrameProcessor
 from relay import validate
 
@@ -20,6 +21,42 @@ def metadata(seq=0, session='test'):
 
 
 class FrameStreamTests(unittest.TestCase):
+    def test_dual_stream_captures_once_and_routes_gray_and_color(self):
+        gray, color, stop = LatestFrame(), LatestFrame(), threading.Event()
+        pixels = np.zeros((480, 640, 3), np.uint8)
+        pixels[:, :, 2] = 200
+        camera = MagicMock()
+        camera.isOpened.return_value = True
+        def read():
+            stop.set()
+            return True, pixels
+        camera.read.side_effect = read
+        with patch('frame_stream.cv2.VideoCapture', return_value=camera) as capture:
+            capture_loop('/dev/test', 90, gray, stop, color_frames=color)
+        capture.assert_called_once()
+        camera.release.assert_called_once()
+        with make_frame_server(gray, port=0, color_frames=color) as server:
+            worker = threading.Thread(target=server.serve_forever, daemon=True)
+            worker.start()
+            try:
+                results = []
+                for path, fmt, shape in [('/frames', 'gray8', (480, 640)), ('/frames/color', 'bgr8', (480, 640, 3))]:
+                    url = f'ws://127.0.0.1:{server.socket.getsockname()[1]}{path}'
+                    with connect(url, proxy=None) as connection:
+                        connection.send('next')
+                        meta, jpeg = unpack_frame(connection.recv(timeout=2))
+                    results.append(meta)
+                    decoded = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_UNCHANGED)
+                    self.assertEqual(meta['pixel_format'], fmt)
+                    self.assertEqual(decoded.shape, shape)
+                    if fmt == 'bgr8':
+                        self.assertGreater(float(decoded[:, :, 2].mean() - decoded[:, :, 0].mean()), 100)
+                for field in ('seq', 'session', 'capture_ns'):
+                    self.assertEqual(results[0][field], results[1][field])
+            finally:
+                server.shutdown()
+                worker.join(timeout=2)
+
     def test_reject_malformed_frames(self):
         for message in ('text', b'', struct.pack('!I', 9000)+b'x',
                         pack_frame(dict(metadata(), width=320), b'jpeg'),

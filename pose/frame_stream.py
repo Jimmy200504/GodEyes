@@ -60,9 +60,11 @@ class LatestFrame:
             return dict(meta, age_ns=max(0, int((time.monotonic() - captured) * 1e9))), jpeg
 
 
-def make_frame_server(frames, host='127.0.0.1', port=8781):
+def make_frame_server(frames, host='127.0.0.1', port=8781, color_frames=None):
     def handler(connection):
-        if connection.request.path != '/frames':
+        source = frames if connection.request.path == '/frames' else (
+            color_frames if connection.request.path == '/frames/color' else None)
+        if source is None:
             connection.close(1008, 'unknown path')
             return
         seq = -1
@@ -71,7 +73,7 @@ def make_frame_server(frames, host='127.0.0.1', port=8781):
                 if connection.recv(timeout=30) != 'next':
                     connection.close(1008, 'expected next')
                     return
-                meta, jpeg = frames.after(seq)
+                meta, jpeg = source.after(seq)
                 connection.send(pack_frame(meta, jpeg))
                 seq = meta['seq']
         except (ConnectionClosed, TimeoutError, RuntimeError):
@@ -79,7 +81,7 @@ def make_frame_server(frames, host='127.0.0.1', port=8781):
     return serve(handler, host, port, compression=None, max_size=64, max_queue=1, close_timeout=.5)
 
 
-def capture_loop(device, quality, frames, stop, grayscale=False):
+def capture_loop(device, quality, frames, stop, grayscale=False, color_frames=None):
     cap = cv2.VideoCapture(device, cv2.CAP_V4L2)
     start, session = time.monotonic(), str(uuid.uuid4())
     try:
@@ -96,26 +98,36 @@ def capture_loop(device, quality, frames, stop, grayscale=False):
             captured = time.monotonic()
             if not ok or frame.shape[:2] != (480, 640):
                 raise RuntimeError('camera read failed or resolution is not 640x480')
-            if grayscale:
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            ok, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
-            if not ok:
-                raise RuntimeError('JPEG encode failed')
-            now = time.monotonic()
-            meta = dict(version=1, session=session, seq=seq,
-                        capture_ns=int((captured-start)*1e9), width=640, height=480,
-                        pixel_format='gray8' if grayscale else 'bgr8',
-                        capture_ms=round((captured-begun)*1000, 2),
-                        encode_ms=round((now-captured)*1000, 2))
-            frames.put(meta, jpeg.tobytes(), captured)
+            # One capture, two independently consumed latest-frame slots. Only
+            # the gray JPEG is requested by the Mac SLAM connection.
+            streams = [(frames, grayscale)]
+            if color_frames is not None:
+                streams = [(frames, True), (color_frames, False)]
+            encoded = []
+            for destination, gray in streams:
+                pixels = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if gray else frame
+                ok, jpeg = cv2.imencode('.jpg', pixels, [cv2.IMWRITE_JPEG_QUALITY, quality])
+                if not ok:
+                    raise RuntimeError('JPEG encode failed')
+                now = time.monotonic()
+                meta = dict(version=1, session=session, seq=seq,
+                            capture_ns=int((captured-start)*1e9), width=640, height=480,
+                            pixel_format='gray8' if gray else 'bgr8',
+                            capture_ms=round((captured-begun)*1000, 2),
+                            encode_ms=round((now-captured)*1000, 2))
+                encoded.append((destination, meta, jpeg.tobytes()))
+            for destination, meta, jpeg in encoded:
+                destination.put(meta, jpeg, captured)
             seq += 1
             if now - report >= 2:
                 print(json.dumps(dict(meta, jpeg_bytes=len(jpeg))), flush=True)
                 report = now
     except Exception as error:
-        with frames.condition:
-            frames.error = str(error)
-            frames.condition.notify_all()
+        for destination in (frames, color_frames):
+            if destination is not None:
+                with destination.condition:
+                    destination.error = str(error)
+                    destination.condition.notify_all()
         print('Camera error: ' + str(error), flush=True)
     finally:
         cap.release()
@@ -126,14 +138,18 @@ def main():
     parser.add_argument('--camera', default='/dev/video2')
     parser.add_argument('--host', default='127.0.0.1')
     parser.add_argument('--port', type=int, default=8781)
+    parser.add_argument('--dual-stream', action='store_true', help='Gray /frames for SLAM and color /frames/color for local gestures from one capture')
     parser.add_argument('--grayscale', action='store_true', help='Encode monochrome JPEG for Mac-side SLAM')
     parser.add_argument('--quality', type=int, choices=range(1, 101), default=90, metavar='1..100')
     args = parser.parse_args()
     frames, stop = LatestFrame(), threading.Event()
+    color_frames = LatestFrame() if args.dual_stream else None
     device = int(args.camera) if args.camera.isdecimal() else args.camera
-    with make_frame_server(frames, args.host, args.port) as server:
-        worker = threading.Thread(target=capture_loop, args=(device, args.quality, frames, stop, args.grayscale), daemon=True)
+    with make_frame_server(frames, args.host, args.port, color_frames) as server:
+        worker = threading.Thread(target=capture_loop, args=(device, args.quality, frames, stop, args.grayscale, color_frames), daemon=True)
         worker.start()
+        if args.dual_stream:
+            print(f'Gray SLAM: /frames; color gestures: /frames/color (one camera)', flush=True)
         print(f'JPEG stream ws://{args.host}:{args.port}/frames (no pose computation)', flush=True)
         try:
             server.serve_forever()

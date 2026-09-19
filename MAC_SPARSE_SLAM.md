@@ -1,12 +1,12 @@
 # 整合版入口：SLAM ＋手勢 NPU
 
-本 worktree 已合併此 SLAM 版本並加入手勢。**板端請保留彩色串流（不加 `--grayscale`），另啟動 `npu/gesture_server.py`；Mac 執行下方啟動腳本。** Mac SLAM 仍自行轉灰階、以 320×240 運算。完整操作見 [SLAM ＋手勢指南](npu/GESTURE_CONTROL.md)。
+本 worktree 已合併此 SLAM 版本並加入手勢。**板端用 `--dual-stream` 提供 SLAM 灰階與手勢彩色串流，另啟動 `npu/gesture_server.py`；Mac 執行下方啟動腳本。** Mac SLAM 仍自行轉灰階、以 320×240 運算。完整操作見 [SLAM ＋手勢指南](npu/GESTURE_CONTROL.md)。
 
 ```sh
 sh scripts/run-local-slam.sh --backend sparse --process-width 320
 ```
 
-目前腳本同時轉發相機 8781 → 18781 與手勢 8782 → 18782。下方是合併前的純 SLAM 紀錄；舊壓縮包與灰階啟動命令不包含整合後手勢功能。
+目前腳本同時轉發相機 8781 → 18781 與手勢 8782 → 18782。下方是合併前的純 SLAM 紀錄；舊壓縮包不包含整合後手勢功能，灰階相機指令仍可沿用。
 
 ---
 

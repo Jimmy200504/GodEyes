@@ -1,6 +1,6 @@
 # 電腦端 SLAM 實驗
 
-此 worktree 已整合手勢 NPU，請優先使用 [SLAM ＋手勢啟動指南](npu/GESTURE_CONTROL.md)。共用串流保留彩色、Mac SLAM 自行轉灰階；本文件的舊壓縮包不包含新整合。
+此 worktree 已整合手勢 NPU，請優先使用 [SLAM ＋手勢啟動指南](npu/GESTURE_CONTROL.md)。相機使用 `--dual-stream`，Mac 只讀灰階 `/frames`，板端手勢讀彩色 `/frames/color`；本文件的舊壓縮包不包含新整合。
 
 目前使用自製 OpenCV ORB＋LK 版本；stella／ORB-SLAM3 建置路線已停止。
 

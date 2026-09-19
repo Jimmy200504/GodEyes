@@ -17,18 +17,18 @@
 
 需要 BSP 的 `opencv`、`numpy`、`tflite_runtime`、`/dev/ethosu0`、`/usr/lib/libethosu_delegate.so`，以及 `websockets==15.0.1`（與 `pose/requirements.txt` 相同）。使用有這些套件的 Python。
 
-手勢服務共用 `pose/frame_stream.py` 的 JPEG 串流；若它已在執行，直接沿用，不要重複開相機。整合模式要保留彩色影格，**不要加 `--grayscale`**。手勢模型沿用 RGB 前處理；Mac SLAM 自行轉灰階。原本直接佔用相機的 sender 需先停止，讓這個串流成為唯一的相機擷取程序。
+相機只擷取一次彩色畫面，使用 `--dual-stream` 同時提供灰階 `/frames` 給 Mac SLAM，以及彩色 `/frames/color` 給板端手勢 NPU。兩路保留相同來源時間與序號。Mac 不會請求彩色路徑，因此不會增加彩色影格的跨電腦傳輸量。先停止舊相機程序，避免佔用相機或 8781 port。
 
 ```sh
 # 終端 1：只在影格服務尚未啟動時執行
-python3 pose/frame_stream.py --camera /dev/video2
+python3 pose/frame_stream.py --camera /dev/video2 --dual-stream
 
 # 終端 2：先驗證板上模型可以載入、推論
 python3 npu/gesture_server.py --check-models
 python3 npu/gesture_server.py
 ```
 
-預設使用 `npu/models/gesture/vela/*_vela.tflite`，不會默默退回 CPU。服務讀取 `ws://127.0.0.1:8781/frames`，輸出 `ws://127.0.0.1:8782/api/gesture/ws`。頭戴相機預設不鏡像；面向使用者的相機若左右相反，加 `--mirror`。
+預設使用 `npu/models/gesture/vela/*_vela.tflite`，不會默默退回 CPU。手勢服務讀取 `ws://127.0.0.1:8781/frames/color`，輸出 `ws://127.0.0.1:8782/api/gesture/ws`。頭戴相機預設不鏡像；面向使用者的相機若左右相反，加 `--mirror`。
 
 ## 電腦端
 
@@ -42,7 +42,8 @@ sh scripts/run-local-slam.sh --backend sparse --process-width 320
 
 | 用途 | 板子 | Mac |
 |---|---|---|
-| 共用彩色相機影格 | 8781 | SSH 轉到 18781 |
+| SLAM 灰階影格 `/frames` | 8781 | SSH 轉到 18781 |
+| 手勢彩色影格 `/frames/color` | 8781，板端使用 | 不請求此路徑 |
 | 手勢 NPU 命令 | 8782 | SSH 轉到 18782 |
 | SLAM API／預覽／WebSocket | 不啟動 | 8865／8866／8867 |
 | 網頁 | 不啟動 | http://localhost:5182 |
