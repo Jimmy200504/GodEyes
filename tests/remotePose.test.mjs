@@ -110,12 +110,13 @@ test('quaternion sign changes and wrap-around use shortest arc', () => {
   close(rotationOf(wrapped).length(), 1);
 });
 
-test('capture gaps hold the visible pose and repeated/backward timestamps do not advance it', () => {
+test('capture gaps resume with a bounded step; repeated/backward timestamps do not advance', () => {
   const filter = new AdaptivePoseSmoother();
   filter.update(measuredPose(), 0);
   close(filter.update(measuredPose(1), 0).position.x, 0);
   close(filter.update(measuredPose(1), -.1).position.x, 0);
-  close(filter.update(measuredPose(1), 1).position.x, 0);
+  const recovered = filter.update(measuredPose(1), 1).position.x;
+  assert.ok(recovered > 0 && recovered < .3);
   const resumed = filter.update(measuredPose(1), 1.05).position.x;
   assert.ok(resumed > 0 && resumed < 1);
   filter.reset();
@@ -148,7 +149,7 @@ test('tracker toggle and tracking loss preserve the existing origin', () => {
 });
 
 
-test('lost packets never reset a nonzero view; reacquisition holds then resumes smoothly', () => {
+test('lost packets never reset a nonzero view; reacquisition resumes smoothly', () => {
   const tracker = new RemotePoseTracker(true);
   tracker.update(packet(0), 0);
   let held;
@@ -164,8 +165,8 @@ test('lost packets never reset a nonzero view; reacquisition holds then resumes 
   }
   const recovered = tracker.update(packet(21, { capture_monotonic_ns: 1050e6,
     position: [.5, .2, .3], quaternion_xyzw: [0, Math.sin(.3), 0, Math.cos(.3)] }), 0);
-  assert.deepEqual(recovered.position, held.position);
-  close(rotationOf(recovered).angleTo(rotationOf(held)), 0);
+  assert.ok(recovered.position.x > held.position.x && recovered.position.x < .5);
+  assert.ok(rotationOf(recovered).angleTo(rotationOf(held)) < .1);
   const moving = tracker.update(packet(22, { capture_monotonic_ns: 1100e6,
     position: [.5, .2, .3], quaternion_xyzw: [0, Math.sin(.3), 0, Math.cos(.3)] }), 0);
   assert.ok(moving.position.x > held.position.x && moving.position.x < .5);
@@ -179,6 +180,21 @@ test('stale data or a network hold preserve the filtered view on recovery', () =
     if (pause === 'stale') assert.equal(tracker.update(packet(2), 300), null);
     else tracker.hold();
     const recovered = tracker.update(packet(3, { capture_monotonic_ns: 150e6, position: [0, 0, 0] }), 0);
-    assert.deepEqual(recovered.position, held.position);
+    assert.ok(recovered.position.x > held.position.x * .7 && recovered.position.x < held.position.x);
   }
+});
+
+
+test('alternating tracking and loss still advances toward valid measurements', () => {
+  const tracker = new RemotePoseTracker(true);
+  tracker.update(packet(0), 0);
+  let previous = 0;
+  for (let i = 1; i <= 20; i += 2) {
+    assert.equal(tracker.update(packet(i, { capture_monotonic_ns: i * 50e6, tracking: 'lost' }), 0), null);
+    const next = tracker.update(packet(i + 1, { capture_monotonic_ns: (i + 1) * 50e6,
+      position: [.2, 0, 0] }), 0).position.x;
+    assert.ok(next > previous && next < .2);
+    previous = next;
+  }
+  assert.ok(previous > .18);
 });

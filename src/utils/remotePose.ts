@@ -100,7 +100,7 @@ export class AdaptivePoseSmoother {
 
   reset(): void { this.time = null; this.paused = false; }
 
-  /** Keep the visible pose; the first reacquired sample restarts only timing/derivatives. */
+  /** Keep the visible pose during loss; resume with a bounded filter step. */
   pause(): void { this.paused = true; }
 
   update(pose: HeadPose, time: number): HeadPose {
@@ -115,8 +115,12 @@ export class AdaptivePoseSmoother {
       this.velocity.set(0, 0, 0);
       this.angularVelocity.set(0, 0, 0);
     } else if (dt > 0 && (this.paused || dt > 0.25)) {
-      // A tracking gap is not a recenter. Freeze this recovery frame at the last
-      // displayed pose, then ease toward subsequent valid samples normally.
+      // Reset derivatives across gaps, but use every valid measurement. Discarding
+      // the recovery frame would freeze forever with alternating valid/lost frames.
+      const step = Math.min(dt, 1 / 30);
+      const alpha = (cutoff: number) => 1 / (1 + 1 / (2 * Math.PI * cutoff * step));
+      this.position.lerp(rawPosition, alpha(1.5));
+      this.rotation.slerp(rawRotation, alpha(2)).normalize();
       this.velocity.set(0, 0, 0);
       this.angularVelocity.set(0, 0, 0);
     } else if (dt > 0) {

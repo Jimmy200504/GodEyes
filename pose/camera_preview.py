@@ -1,4 +1,5 @@
 """Python webcam GUI in a browser. Trusted hackathon network only."""
+from collections import Counter
 import argparse
 import json
 import threading
@@ -66,15 +67,21 @@ class Camera:
             detector = cv2.aruco.ArucoDetector(cv2.aruco.getPredefinedDictionary(DICTIONARY), params)
             previous = time.monotonic()
             fps = 0
+            outcomes = Counter()
+            timings = {}
             while not self.stop.is_set():
+                read_started = time.monotonic()
                 ok, frame = cap.read()
                 if not ok:
                     raise RuntimeError('Camera read failed')
                 captured = time.monotonic()
                 corners, ids, _ = detector.detectMarkers(frame)
+                detected = time.monotonic()
                 packet, reprojection = self.pipeline.update(corners, ids,
                     (frame.shape[1], frame.shape[0]), captured)
+                solved = time.monotonic()
                 self.sender.put(packet, captured)
+                outcomes[packet["tracking_reason"] or packet["tracking"]] += 1
                 values = [] if ids is None else [int(v) for v in ids.flatten()]
                 seen_targets = [i for i in self.pipeline.target_ids if values.count(i) == 1]
                 found = bool(seen_targets)
@@ -86,12 +93,16 @@ class Camera:
                     cv2.aruco.drawDetectedMarkers(frame, corners, ids)
                 cv2.putText(frame, 'Seen: ' + ','.join(map(str,seen_targets)) if found else 'Looking for board markers',
                     (12,30), cv2.FONT_HERSHEY_SIMPLEX, .65, (0,255,0) if found else (0,190,255), 2)
+                drawn = time.monotonic()
                 ok, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY,80])
                 if not ok:
                     continue
                 now = time.monotonic()
                 fps = .9*fps + .1/max(now-previous,.001)
                 previous = now
+                for name, seconds in dict(capture=captured-read_started, detect=detected-captured,
+                        pose=solved-detected, overlay=drawn-solved, jpeg=now-drawn).items():
+                    timings[name] = .9*timings.get(name, seconds*1000) + .1*seconds*1000
                 with self.lock:
                     self.jpg = jpeg.tobytes()
                     self.updated = now
@@ -100,7 +111,9 @@ class Camera:
                         pose_tracking=packet['tracking'], pose_reason=packet['tracking_reason'],
                         used_ids=packet['used_ids'], target_ids=packet['target_ids'],
                         scale=packet['scale'], position=packet['position'],
-                        reprojection_error_px=reprojection)
+                        reprojection_error_px=reprojection,
+                        timings_ms={key: round(value, 2) for key, value in timings.items()},
+                        outcomes=dict(outcomes))
         except Exception as error:
             with self.lock:
                 self.state['error'] = str(error)
