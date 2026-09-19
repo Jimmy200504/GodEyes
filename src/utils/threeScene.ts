@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GestureNavigation } from './gestureNavigation';
-import { connectGestureSocket } from './gestureSocket';
+import { connectGestureSocket, type GestureTelemetry } from './gestureSocket';
 import { RenderPoseSmoother } from './renderPose';
 import { SparkRenderer, SplatMesh } from '@sparkjsdev/spark';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -13,6 +13,7 @@ export interface ThreeSceneOptions {
   container: HTMLElement;
   width?: number;
   height?: number;
+  onGestureTelemetry?: (data: GestureTelemetry) => void;
   onGestureStatus?: (status: string) => void;
   onSceneStatus?: (status: 'loading' | 'ready' | 'error') => void;
 }
@@ -70,6 +71,7 @@ export class ThreeSceneManager {
       (command, age) => this.gesture.accept(command, age),
       this.gesture.clear,
       options.onGestureStatus ?? (() => {}),
+      options.onGestureTelemetry,
     );
     this.loadShoeModel();
     this.createWireframeRoom();

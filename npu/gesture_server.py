@@ -19,22 +19,26 @@ from gesture_control import GestureGate, STOP  # noqa: E402
 
 
 class LatestGesture:
-    def __init__(self):
+    def __init__(self, backend='unknown'):
+        self.backend = backend
         self.lock = threading.Lock()
         self.packet = None
         self.captured = 0.0
 
-    def put(self, gesture, command, captured, status='tracking'):
+    def put(self, gesture, command, captured, status='tracking', confidence=None, inference_ms=None):
         with self.lock:
-            self.packet = dict(version=1, gesture=gesture, command=command, status=status)
+            self.packet = dict(version=1, gesture=gesture, command=command, status=status,
+                               backend=self.backend, confidence=confidence, inference_ms=inference_ms)
             self.captured = captured
 
     def get(self):
         with self.lock:
             age = (time.monotonic() - self.captured) * 1000
-            if self.packet is None or age >= 250:
+            if self.packet is None:
                 return dict(version=1, gesture='None', command=dict(STOP), age_ms=0.0,
-                            status='waiting' if self.packet is None else 'stale')
+                            status='waiting', backend=self.backend, confidence=None, inference_ms=None)
+            if age >= 250:
+                return dict(self.packet, command=dict(STOP), age_ms=max(0.0, age), status='stale')
             return dict(self.packet, age_ms=max(0.0, age))
 
 
@@ -103,13 +107,16 @@ def inference_loop(args, tracker, classifier, latest, stop):
                     frame = cv2.imdecode(np.frombuffer(jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)
                     if frame is None or frame.shape[:2] != (480, 640):
                         raise ValueError('invalid camera JPEG')
+                    inference_started = time.monotonic()
                     gesture, confidence, x, y = infer_frame(frame, tracker, classifier)
+                    inference_ms = (time.monotonic() - inference_started) * 1000
                     command = gate.update(gesture, confidence, x, y, args.mirror)
                     if confidence < .75 and gesture != 'None':
                         gesture = 'Unknown'
                     if time.monotonic() - captured >= .25:
                         gate = GestureGate()
-                    latest.put(gesture, command, captured)
+                    latest.put(gesture, command, captured, confidence=confidence if gesture != 'None' else None,
+                               inference_ms=round(inference_ms, 2))
         except Exception as error:
             latest.put('None', dict(STOP), time.monotonic(), status='error')
             gate = GestureGate()
@@ -151,7 +158,7 @@ def main():
         import numpy as np
         print(infer_frame(np.zeros((480, 640, 3), dtype=np.uint8), tracker, classifier))
         return
-    latest, stop = LatestGesture(), threading.Event()
+    latest, stop = LatestGesture('CPU' if args.cpu else 'NPU'), threading.Event()
     with make_server(latest, args.host, args.port) as server:
         worker = threading.Thread(target=inference_loop, args=(args, tracker, classifier, latest, stop), daemon=True)
         worker.start()

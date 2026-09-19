@@ -10,7 +10,7 @@ function harness(run) {
   const names = ['performance', 'location', 'WebSocket', 'setTimeout', 'clearTimeout', 'window', 'document'];
   const saved = Object.fromEntries(names.map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   let now = 0, id = 0, clears = 0;
-  const timers = new Map(), sockets = [], accepted = [], statuses = [];
+  const timers = new Map(), sockets = [], accepted = [], statuses = [], telemetry = [];
   class Socket {
     constructor(url) { this.url = url; this.sent = []; sockets.push(this); }
     send(value) { this.sent.push(value); }
@@ -24,10 +24,10 @@ function harness(run) {
     clearTimeout: key => timers.delete(key),
   };
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, value });
-  const stop = connectGestureSocket((command, age) => { accepted.push({ command, age }); return age < 250; }, () => clears++, status => statuses.push(status));
+  const stop = connectGestureSocket((command, age) => { accepted.push({ command, age }); return age < 250; }, () => clears++, status => statuses.push(status), data => telemetry.push(data));
   const message = (ws, age = 0) => ws.onmessage({ data: JSON.stringify({ version: 1, age_ms: age, gesture: 'Open', command: { forward: 1, sideways: 0, yaw: 0, pitch: 0 } }) });
   try {
-    run({ sockets, timers, accepted, statuses, doc, stop, message, clears: () => clears, time: value => now = value,
+    run({ sockets, timers, accepted, statuses, telemetry, doc, stop, message, clears: () => clears, time: value => now = value,
       tick: ms => { const item = [...timers].find(([, value]) => value.ms === ms); assert.ok(item); timers.delete(item[0]); item[1].fn(); },
     });
   } finally {
@@ -66,4 +66,22 @@ test('malformed packets and failed opening stop and reconnect', () => harness(h 
   assert.equal(h.accepted.length, 0);
   assert.ok(h.clears() > 0);
   h.tick(500); assert.equal(h.sockets.length, 3);
+}));
+
+test('telemetry clears motion on frame expiry and disconnect without losing the last detection', () => harness(h => {
+  const ws = h.sockets[0]; ws.onopen();
+  ws.onmessage({ data: JSON.stringify({ version: 1, age_ms: 50, status: 'tracking', gesture: 'Open', confidence: .93, backend: 'NPU', inference_ms: 32, command: { forward: 1, sideways: 0, yaw: 0, pitch: 0 } }) });
+  const sample = h.telemetry.at(-1);
+  assert.equal(sample.gesture, 'Open');
+  assert.equal(sample.confidence, .93);
+  assert.equal(sample.backend, 'NPU');
+  assert.equal(sample.inferenceMs, 32);
+  assert.equal(sample.command.forward, 1);
+  assert.equal(sample.accepted, true);
+  h.tick(200);
+  assert.equal(h.telemetry.at(-1).accepted, false);
+  assert.equal(h.telemetry.at(-1).command.forward, 0);
+  assert.equal(h.telemetry.at(-1).gesture, 'Open');
+  ws.close();
+  assert.equal(h.telemetry.at(-1).connected, false);
 }));

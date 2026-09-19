@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import ThreeView from './components/ThreeView';
 import { connectPoseSocket } from './utils/poseSocket';
+import GesturePanel from './components/GesturePanel';
+import type { GestureTelemetry } from './utils/gestureSocket';
 import CameraPreview from './components/CameraPreview';
 import type { HeadPose } from './utils/headPose';
 import { RemotePoseTracker } from './utils/remotePose';
@@ -15,9 +17,12 @@ export default function App() {
   const [poseEpoch, setPoseEpoch] = useState(0);
   const [rtt, setRtt] = useState(0);
   const [estimated, setEstimated] = useState(false);
+  const [gestureTelemetry, setGestureTelemetry] = useState<GestureTelemetry | null>(null);
   const [gestureStatus, setGestureStatus] = useState('等待手勢 NPU');
   const [gain, setGain] = useState(5);
   const [status, setStatus] = useState('等待邊緣裝置');
+
+  const scaledPose = useMemo(() => pose && pose.position ? { ...pose, position: { x: pose.position.x * gain, y: pose.position.y * gain, z: pose.position.z * gain } } : pose, [pose, gain]);
 
   useEffect(() => connectPoseSocket((packet, ageMs) => {
     setEstimated(packet.scale !== 'metric');
@@ -33,8 +38,9 @@ export default function App() {
   }, value => setRtt(Math.round(value))), []);
 
   return <main className="h-screen w-screen relative bg-black">
-    <ThreeView onGestureStatus={setGestureStatus} headPose={pose && pose.position ? { ...pose, position: { x: pose.position.x * gain, y: pose.position.y * gain, z: pose.position.z * gain } } : pose} renderSmoothing={renderSmoothing} posePrediction={posePrediction} allowCoast={allowCoast} poseEpoch={poseEpoch} />
+    <ThreeView onGestureTelemetry={setGestureTelemetry} onGestureStatus={setGestureStatus} headPose={scaledPose} renderSmoothing={renderSmoothing} posePrediction={posePrediction} allowCoast={allowCoast} poseEpoch={poseEpoch} />
     <CameraPreview />
+    <GesturePanel data={gestureTelemetry} status={gestureStatus} />
     <div className="absolute bottom-4 left-4 z-20 rounded-lg bg-black/80 p-4 text-white space-y-2">
       <h1 className="font-bold">GodEyes · 無標記 SLAM ＋手勢控制</h1>
       <p role="status">{status}</p>

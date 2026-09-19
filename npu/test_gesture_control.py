@@ -31,6 +31,21 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(gate.update('Close', .9, 1, .5), STOP)
         self.assertEqual(gate.update('Open', .9, 1, .5), STOP)
 
+    def test_diagnostics_preserve_last_detection_but_stop_stale_commands(self):
+        latest = LatestGesture('NPU')
+        latest.put('Open', dict(STOP, forward=1), 10, confidence=.93, inference_ms=32)
+        with patch('gesture_server.time.monotonic', return_value=10.1):
+            packet = latest.get()
+            self.assertEqual(packet['backend'], 'NPU')
+            self.assertEqual(packet['confidence'], .93)
+            self.assertEqual(packet['inference_ms'], 32)
+        with patch('gesture_server.time.monotonic', return_value=10.3):
+            packet = latest.get()
+            self.assertEqual(packet['status'], 'stale')
+            self.assertEqual(packet['gesture'], 'Open')
+            self.assertEqual(packet['command'], STOP)
+            self.assertGreater(packet['age_ms'], 250)
+
     def test_service_never_replays_stale_motion(self):
         latest = LatestGesture()
         self.assertEqual(latest.get()['command'], STOP)

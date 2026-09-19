@@ -1,10 +1,12 @@
 import { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { ThreeSceneManager } from '../utils/threeScene';
+import type { GestureTelemetry } from '../utils/gestureSocket';
 import { HeadPose } from '../utils/headPose';
 import { CalibrationData } from '../utils/calibration';
 
 interface ThreeViewProps {
   headPose: HeadPose | null;
+  onGestureTelemetry?: (data: GestureTelemetry) => void;
   onGestureStatus?: (status: string) => void;
   renderSmoothing?: boolean;
   posePrediction?: boolean;
@@ -23,9 +25,11 @@ export interface ThreeViewHandle {
   getModelRotation: () => { x: number; y: number; z: number };
 }
 
-const ThreeView = forwardRef<ThreeViewHandle, ThreeViewProps>(({ headPose, onGestureStatus, renderSmoothing = true, posePrediction = false, allowCoast = false, poseEpoch = 0 }, ref) => {
+const ThreeView = forwardRef<ThreeViewHandle, ThreeViewProps>(({ headPose, onGestureStatus, onGestureTelemetry, renderSmoothing = true, posePrediction = false, allowCoast = false, poseEpoch = 0 }, ref) => {
   const gestureStatusRef = useRef(onGestureStatus);
   gestureStatusRef.current = onGestureStatus;
+  const gestureTelemetryRef = useRef(onGestureTelemetry);
+  gestureTelemetryRef.current = onGestureTelemetry;
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneManagerRef = useRef<ThreeSceneManager | null>(null);
   useEffect(() => {
@@ -34,6 +38,7 @@ const ThreeView = forwardRef<ThreeViewHandle, ThreeViewProps>(({ headPose, onGes
     sceneManagerRef.current = new ThreeSceneManager({
       container: containerRef.current,
       onGestureStatus: status => gestureStatusRef.current?.(status),
+      onGestureTelemetry: data => gestureTelemetryRef.current?.(data),
       width: containerRef.current.clientWidth,
       height: containerRef.current.clientHeight
     });
