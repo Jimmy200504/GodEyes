@@ -11,7 +11,7 @@ const ModelViewer: React.FC<ModelViewerProps> = ({
   width = 400, 
   height = 400 
 }) => {
-  const [modelUrl, setModelUrl] = useState<string>(modelPath);
+  const modelUrl = modelPath;
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 

@@ -28,3 +28,10 @@ dist-ssr
 .env.*
 !.env.example
 .git-history-backup/
+
+# Local generation service
+.venv/
+data/
+case-runs/
+__pycache__/
+*.pyc

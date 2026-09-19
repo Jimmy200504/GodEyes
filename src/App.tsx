@@ -1,172 +1,398 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { Maximize, Minimize, Settings, Bug } from 'lucide-react';
-import FaceMeshView from './components/FaceMeshView';
-import ThreeView, { ThreeViewHandle } from './components/ThreeView';
-import CalibrationWizard from './components/CalibrationWizard';
-import { HeadPose } from './utils/headPose';
-import { calibrationManager, CalibrationData } from './utils/calibration';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import {
+  ArrowLeft,
+  Camera,
+  ChevronDown,
+  ChevronUp,
+  CircleDot,
+  Compass,
+  Eye,
+  Layers3,
+  Maximize,
+  MousePointer2,
+  RotateCcw,
+  Settings2,
+  X,
+} from "lucide-react";
+import type { ThreeViewHandle } from "./components/ThreeView";
+import CalibrationWizard from "./components/CalibrationWizard";
+import SceneBuilder from "./components/SceneBuilder";
+import WorldLibrary from "./components/WorldLibrary";
+import { pageFromHash, pageHash } from "./utils/navigation";
+import type { Page } from "./utils/navigation";
+import { api, WORLD_SCENES, WorldScene } from "./utils/worldScenes";
+import { HeadPose } from "./utils/headPose";
+import { calibrationManager } from "./utils/calibration";
 
-function App() {
-  const [isCdnAvailable, setIsCdnAvailable] = useState(true);
-  const [isCheckingCdn, setIsCheckingCdn] = useState(true);
-  const [currentHeadPose, setCurrentHeadPose] = useState<HeadPose | null>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showCalibration, setShowCalibration] = useState(false);
-  const [debugMode, setDebugMode] = useState(false);
-  const [controlsContainer, setControlsContainer] = useState<HTMLDivElement | null>(null);
-  const threeViewRef = useRef<ThreeViewHandle>(null);
+const ThreeView = lazy(() => import("./components/ThreeView"));
+const FaceMeshView = lazy(() => import("./components/FaceMeshView"));
 
+function initialPage(): Page {
+  return pageFromHash(window.location.hash);
+}
+function App(): JSX.Element {
+  const [page, setPage] = useState<Page>(initialPage);
+  const [generated, setGenerated] = useState<WorldScene[]>([]);
+  const [online, setOnline] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [headMode, setHeadMode] = useState(false);
+  const [headPose, setHeadPose] = useState<HeadPose | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [calibrationOpen, setCalibrationOpen] = useState(false);
+  const [trackingKey, setTrackingKey] = useState(0);
+  const [controls, setControls] = useState<HTMLDivElement | null>(null);
+  const [fullscreenError, setFullscreenError] = useState("");
+  const viewer = useRef<ThreeViewHandle>(null);
+  const scenes = [...WORLD_SCENES, ...generated];
+  const selected =
+    "id" in page ? scenes.find((scene) => scene.id === page.id) : undefined;
   useEffect(() => {
-    const checkCdnAvailability = async () => {
-      setIsCheckingCdn(true);
+    let cancelled = false;
+    async function refresh(): Promise<void> {
       try {
-        const faceMeshResponse = await fetch(
-          'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js',
-          { method: 'HEAD' }
-        );
-
-        const cameraResponse = await fetch(
-          'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js',
-          { method: 'HEAD' }
-        );
-
-        const drawingResponse = await fetch(
-          'https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js',
-          { method: 'HEAD' }
-        );
-
-        setIsCdnAvailable(faceMeshResponse.ok && cameraResponse.ok && drawingResponse.ok);
-      } catch (error) {
-        console.error('Error checking CDN availability:', error);
-        setIsCdnAvailable(false);
+        const result = await api<WorldScene[]>("/api/scenes");
+        if (!cancelled) {
+          setGenerated(result);
+          setOnline(true);
+        }
+      } catch {
+        if (!cancelled) setOnline(false);
       } finally {
-        setIsCheckingCdn(false);
+        if (!cancelled) setLoaded(true);
       }
+    }
+    void refresh();
+    const timer = setInterval(() => void refresh(), 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
     };
-
-    checkCdnAvailability();
-
-    const intervalId = setInterval(checkCdnAvailability, 60000);
-
-    return () => clearInterval(intervalId);
   }, []);
-
-  const handleHeadPoseUpdate = useCallback((rawPose: HeadPose | null) => {
-    setCurrentHeadPose(rawPose);
-  }, []);
-
-  const toggleFullscreen = useCallback(async () => {
-    if (!document.fullscreenElement) {
-      try {
-        await document.documentElement.requestFullscreen();
-        setIsFullscreen(true);
-      } catch (error) {
-        console.error('Error entering fullscreen:', error);
-      }
-    } else {
-      try {
-        await document.exitFullscreen();
-        setIsFullscreen(false);
-      } catch (error) {
-        console.error('Error exiting fullscreen:', error);
-      }
-    }
-  }, []);
-
   useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+    const handle = () => {
+      setPage(initialPage());
+      setHeadMode(false);
+      setHeadPose(null);
     };
-
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    window.addEventListener("hashchange", handle);
+    return () => window.removeEventListener("hashchange", handle);
   }, []);
-
-  useEffect(() => {
-    if (!calibrationManager.isCalibrated()) {
-      setShowCalibration(true);
+  function navigate(next: Page): void {
+    setPage(next);
+    setHeadMode(false);
+    setHeadPose(null);
+    setSettingsOpen(false);
+    window.history.pushState(null, "", pageHash(next));
+  }
+  const onPose = useCallback((pose: HeadPose | null) => setHeadPose(pose), []);
+  function receive(scene: WorldScene): void {
+    setGenerated((current) => [
+      scene,
+      ...current.filter((item) => item.id !== scene.id),
+    ]);
+    if (page.kind !== "builder" || page.id !== scene.id)
+      navigate({ kind: "builder", id: scene.id });
+  }
+  function reset(): void {
+    viewer.current?.resetView();
+    setHeadPose(null);
+    setTrackingKey((n) => n + 1);
+  }
+  async function fullscreen(): Promise<void> {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen();
+    } catch {
+      setFullscreenError("瀏覽器未允許全螢幕；仍可在此視窗探索。");
     }
-  }, []);
-
-  const handleCalibrationComplete = (newCalibration: CalibrationData) => {
-    if (threeViewRef.current) {
-      threeViewRef.current.updateCalibration(newCalibration);
-    }
-  };
-
-  const toggleDebugMode = () => {
-    const newDebugMode = !debugMode;
-    setDebugMode(newDebugMode);
-    if (threeViewRef.current) {
-      threeViewRef.current.setDebugMode(newDebugMode);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-gray-900 flex flex-col relative">
-      <main className="flex-1 relative">
-        {!isCheckingCdn && !isCdnAvailable && (
-          <div className="absolute bottom-56 left-4 right-4 z-30 max-w-2xl mx-auto p-3 bg-yellow-50 text-yellow-800 rounded-md">
-            <p className="text-sm">
-              We're having trouble connecting to the required resources. Please check your internet connection.
-            </p>
+  }
+  if (page.kind === "explore" && selected?.spzUrl)
+    return (
+      <div className="explorer">
+        <Suspense
+          fallback={
+            <div className="world-loading">
+              <p>正在準備空間探索…</p>
+            </div>
+          }
+        >
+          <ThreeView
+            scene={selected}
+            headPose={headPose}
+            mode={headMode ? "head" : "mouse"}
+            ref={viewer}
+          />
+        </Suspense>
+        <header className="explore-header">
+          <button
+            className="glass icon-button"
+            aria-label="返回世界資料庫"
+            onClick={() => navigate({ kind: "library" })}
+          >
+            <ArrowLeft size={20} />
+          </button>
+          <div className="glass explore-title">
+            <span className="brand-mini">
+              <Eye size={18} />
+              GODEYES
+            </span>
+            <span className="divider" />
+            <label>
+              <span className="sr-only">切換世界</span>
+              <select
+                value={selected.id}
+                onChange={(e) =>
+                  navigate({ kind: "explore", id: e.target.value })
+                }
+              >
+                {scenes
+                  .filter((s) => s.status === "ready")
+                  .map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          </div>
+          <span className="glass live-tag">
+            <span className="status-dot" />
+            空間探索
+          </span>
+        </header>
+        <div className="explore-actions">
+          {selected.source === "generated" && (
+            <button
+              className="glass icon-button"
+              aria-label="檢視原圖、Clean Image 與 Prompt"
+              title="影像與 Prompt"
+              onClick={() => navigate({ kind: "builder", id: selected.id })}
+            >
+              <Layers3 size={18} />
+            </button>
+          )}
+          <button
+            className="glass icon-button"
+            aria-label="全螢幕"
+            title="全螢幕"
+            onClick={() => void fullscreen()}
+          >
+            <Maximize size={18} />
+          </button>
+          <button
+            className="glass icon-button"
+            aria-label="進階設定"
+            title="進階設定"
+            onClick={() => setSettingsOpen(!settingsOpen)}
+          >
+            <Settings2 size={18} />
+          </button>
+        </div>
+        {settingsOpen && (
+          <div className="glass settings-panel">
+            <div className="image-heading">
+              <h2>探索設定</h2>
+              <button
+                className="icon-button"
+                aria-label="關閉設定"
+                onClick={() => setSettingsOpen(false)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <button
+              className="secondary"
+              onClick={() => setCalibrationOpen(true)}
+            >
+              螢幕與觀看距離校正
+            </button>
+            <label className="debug-option">
+              <input
+                type="checkbox"
+                onChange={(e) => viewer.current?.setDebugMode(e.target.checked)}
+              />
+              顯示除錯座標
+            </label>
           </div>
         )}
-
-        <div className="absolute inset-0">
-          <ThreeView
-            headPose={currentHeadPose}
-            ref={threeViewRef}
-          />
-        </div>
-
-        <div ref={setControlsContainer} className="absolute top-4 left-4 z-20" />
-
-        <div className="absolute bottom-4 right-4 z-10 rounded-lg overflow-hidden shadow-2xl border-2 border-white">
-          <div className="w-64 h-48">
-            <FaceMeshView onHeadPoseUpdate={handleHeadPoseUpdate} controlsContainer={controlsContainer} />
+        <div className="explore-bottom">
+          <div className="glass navigation-hint">
+            <Compass size={18} />
+            <span>
+              {headMode ? "轉動或移動頭部探索" : "拖曳畫面環顧四周"}
+              <small>點擊場景後，以 W A S D 移動</small>
+            </span>
+          </div>
+          <div className="glass mode-controls">
+            <button
+              className={!headMode ? "selected" : ""}
+              onClick={() => {
+                setHeadMode(false);
+                setHeadPose(null);
+              }}
+            >
+              <MousePointer2 size={16} />
+              滑鼠
+            </button>
+            <button
+              className={headMode ? "selected" : ""}
+              onClick={() => {
+                if (!headMode) {
+                  setHeadMode(true);
+                  setTrackingKey((n) => n + 1);
+                  if (!calibrationManager.isCalibrated())
+                    setCalibrationOpen(true);
+                }
+              }}
+            >
+              <Camera size={16} />
+              頭部追蹤
+            </button>
+            <span className="divider" />
+            <button onClick={reset} title="重設視角">
+              <RotateCcw size={16} />
+              <span className="reset-label">重設</span>
+            </button>
           </div>
         </div>
-
-        <div className="absolute bottom-4 left-4 z-10 flex flex-col gap-2">
-          <button
-            onClick={toggleFullscreen}
-            className="p-1.5 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded transition-colors backdrop-blur-sm"
-            aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-            title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+        {headMode && (
+          <aside
+            className={`camera-panel glass ${cameraOpen ? "" : "collapsed"}`}
           >
-            {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
-          </button>
-
-          <button
-            onClick={() => setShowCalibration(true)}
-            className="p-1.5 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded transition-colors backdrop-blur-sm"
-            aria-label="Calibration settings"
-            title="Calibration settings"
-          >
-            <Settings size={14} />
-          </button>
-
-          <button
-            onClick={toggleDebugMode}
-            className={`p-1.5 ${debugMode ? 'bg-blue-600' : 'bg-black bg-opacity-50'} hover:bg-opacity-70 text-white rounded transition-colors backdrop-blur-sm`}
-            aria-label="Toggle debug mode"
-            title="Toggle debug mode"
-          >
-            <Bug size={14} />
-          </button>
-        </div>
-      </main>
-
-      {showCalibration && (
-        <CalibrationWizard
-          onComplete={handleCalibrationComplete}
-          onSkip={() => setShowCalibration(false)}
-          onClose={() => setShowCalibration(false)}
+            <button
+              className="camera-heading"
+              onClick={() => setCameraOpen(!cameraOpen)}
+            >
+              <span>
+                <CircleDot size={13} />
+                頭部追蹤
+              </span>
+              {cameraOpen ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+            </button>
+            <div
+              className={
+                cameraOpen
+                  ? "camera-content"
+                  : "camera-content visually-collapsed"
+              }
+            >
+              <div className="camera-video">
+                <Suspense
+                  fallback={<p className="p-4 text-xs">正在準備頭部追蹤…</p>}
+                >
+                  <FaceMeshView
+                    key={trackingKey}
+                    onHeadPoseUpdate={onPose}
+                    controlsContainer={controls}
+                  />
+                </Suspense>
+              </div>
+              <div ref={setControls} />
+            </div>
+          </aside>
+        )}
+        {fullscreenError && (
+          <div className="explore-notice" role="status">
+            {fullscreenError}
+          </div>
+        )}
+        {calibrationOpen && (
+          <CalibrationWizard
+            onComplete={(value) => {
+              viewer.current?.updateCalibration(value);
+              setCalibrationOpen(false);
+            }}
+            onSkip={() => setCalibrationOpen(false)}
+            onClose={() => setCalibrationOpen(false)}
+          />
+        )}
+      </div>
+    );
+  function renderPage(): JSX.Element {
+    if (page.kind === "builder" && (!page.id || selected)) {
+      return (
+        <SceneBuilder
+          key={page.id || "new"}
+          scene={selected}
+          online={online}
+          onBack={() => navigate({ kind: "library" })}
+          onScene={receive}
+          onExplore={(scene) => navigate({ kind: "explore", id: scene.id })}
         />
-      )}
+      );
+    }
+    if (page.kind !== "library") {
+      return (
+        <main className="page-width missing-state">
+          <h1>{!loaded ? "正在讀取世界…" : "暫時找不到這個世界"}</h1>
+          <p>
+            {online
+              ? "返回資料庫選擇已完成的場景。"
+              : "請啟動本機服務以讀取已建立的世界。"}
+          </p>
+          <button
+            className="primary"
+            onClick={() => navigate({ kind: "library" })}
+          >
+            返回世界資料庫
+          </button>
+        </main>
+      );
+    }
+    return (
+      <WorldLibrary
+        scenes={scenes}
+        onCreate={() => navigate({ kind: "builder" })}
+        onOpen={(scene) =>
+          navigate({
+            kind: scene.status === "ready" ? "explore" : "builder",
+            id: scene.id,
+          })
+        }
+      />
+    );
+  }
+  return (
+    <div className="app-shell">
+      <header className="main-header">
+        <button className="brand" onClick={() => navigate({ kind: "library" })}>
+          <span className="brand-icon">
+            <Eye size={24} />
+          </span>
+          <span>
+            GOD<span className="brand-light">EYES</span>
+            <small>SPATIAL RECONSTRUCTION</small>
+          </span>
+        </button>
+        <nav>
+          <button
+            className={page.kind === "library" ? "nav-active" : ""}
+            onClick={() => navigate({ kind: "library" })}
+          >
+            世界資料庫
+          </button>
+          <button
+            className={page.kind === "builder" ? "nav-active" : ""}
+            onClick={() => navigate({ kind: "builder" })}
+          >
+            場景工作台
+          </button>
+        </nav>
+        <div className="service-status">
+          <span className={`status-dot ${online ? "" : "offline"}`} />
+          {online ? "本機工作台已連線" : "本機場景可探索"}
+        </div>
+      </header>
+      {renderPage()}
     </div>
   );
 }
-
 export default App;

@@ -1,110 +1,120 @@
-import { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
-import { ThreeSceneManager } from '../utils/threeScene';
-import { WORLD_SCENES, WorldSceneId } from '../utils/worldScenes';
-import { HeadPose } from '../utils/headPose';
-import { CalibrationData } from '../utils/calibration';
-
-interface ThreeViewProps {
+import {
+  useRef,
+  useEffect,
+  useState,
+  forwardRef,
+  useImperativeHandle,
+} from "react";
+import { Loader2, RotateCcw, AlertCircle } from "lucide-react";
+import { ThreeSceneManager } from "../utils/threeScene";
+import { WorldScene } from "../utils/worldScenes";
+import { HeadPose } from "../utils/headPose";
+import { CalibrationData } from "../utils/calibration";
+interface Props {
   headPose: HeadPose | null;
+  scene: WorldScene;
+  mode: "mouse" | "head";
 }
-
 export interface ThreeViewHandle {
   updateCalibration: (calibration: CalibrationData) => void;
   setDebugMode: (enabled: boolean) => void;
+  resetView: () => void;
 }
-
-const ThreeView = forwardRef<ThreeViewHandle, ThreeViewProps>(({ headPose }, ref) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const sceneManagerRef = useRef<ThreeSceneManager | null>(null);
-  const [sceneId, setSceneId] = useState<WorldSceneId>(WORLD_SCENES[0].id);
-  const [sceneStatus, setSceneStatus] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [retryCount, setRetryCount] = useState(0);
-
-  useEffect(() => {
-    if (!containerRef.current) return;
-
-    sceneManagerRef.current = new ThreeSceneManager({
-      container: containerRef.current,
-      width: containerRef.current.clientWidth,
-      height: containerRef.current.clientHeight
-    });
-
-    sceneManagerRef.current.start();
-
-    const handleResize = () => {
-      if (containerRef.current && sceneManagerRef.current) {
-        sceneManagerRef.current.resize(
-          containerRef.current.clientWidth,
-          containerRef.current.clientHeight
-        );
+const ThreeView = forwardRef<ThreeViewHandle, Props>(
+  ({ headPose, scene, mode }, ref) => {
+    const container = useRef<HTMLDivElement>(null);
+    const sceneRef = useRef(scene);
+    sceneRef.current = scene;
+    const manager = useRef<ThreeSceneManager | null>(null);
+    const [status, setStatus] = useState<"loading" | "ready" | "error">(
+      "loading",
+    );
+    const [attempt, setAttempt] = useState(0);
+    const [initError, setInitError] = useState("");
+    useEffect(() => {
+      if (!container.current) return;
+      try {
+        manager.current = new ThreeSceneManager({
+          container: container.current,
+        });
+        manager.current.start();
+        const resize = new ResizeObserver(([entry]) => {
+          if (entry.contentRect.width && entry.contentRect.height)
+            manager.current?.resize(
+              entry.contentRect.width,
+              entry.contentRect.height,
+            );
+        });
+        resize.observe(container.current);
+        return () => {
+          resize.disconnect();
+          manager.current?.dispose();
+          manager.current = null;
+        };
+      } catch {
+        setInitError("無法啟動 3D 渲染；請使用支援 WebGL 2 的瀏覽器。");
+        setStatus("error");
       }
-    };
-
-    window.addEventListener('resize', handleResize);
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      if (sceneManagerRef.current) {
-        sceneManagerRef.current.dispose();
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    void sceneManagerRef.current?.loadWorld(sceneId, setSceneStatus);
-  }, [sceneId, retryCount]);
-
-  useEffect(() => {
-    if (headPose && sceneManagerRef.current) {
-      sceneManagerRef.current.updateHeadPose(headPose);
-    }
-  }, [headPose]);
-
-  useImperativeHandle(ref, () => ({
-    updateCalibration: (calibration: CalibrationData) => {
-      if (sceneManagerRef.current) {
-        sceneManagerRef.current.updateCalibration(calibration);
-      }
-    },
-    setDebugMode: (enabled: boolean) => {
-      if (sceneManagerRef.current) {
-        sceneManagerRef.current.setDebugMode(enabled);
-      }
-    },
-  }));
-
-  return (
-    <div className="w-full h-full relative bg-black">
-      <div
-        ref={containerRef}
-        tabIndex={0}
-        aria-label="3D 場景，頭部位移控制，可調整角度倍率"
-        onPointerDown={() => containerRef.current?.focus({ preventScroll: true })}
-        className="w-full h-full outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400"
-        style={{ touchAction: 'none' }}
-      />
-      <div className="absolute top-4 right-4 z-20 max-w-[calc(100%-2rem)] rounded-lg bg-black/70 p-3 text-white backdrop-blur-sm">
-        <label htmlFor="world-scene" className="mb-1 block text-xs text-gray-300">場景</label>
-        <select
-          id="world-scene"
-          value={sceneId}
-          onChange={event => setSceneId(event.target.value as WorldSceneId)}
-          disabled={sceneStatus === 'loading'}
-          className="w-full rounded border border-gray-600 bg-gray-900 px-2 py-1.5 text-sm disabled:opacity-60"
-        >
-          {WORLD_SCENES.map(scene => <option key={scene.id} value={scene.id}>{scene.label}</option>)}
-        </select>
-        <p role="status" aria-live="polite" className="mt-2 text-xs text-gray-300">
-          {sceneStatus === 'loading' ? '正在載入場景…' : sceneStatus === 'error' ? '場景載入失敗，請重試或選擇另一個場景。' : '場景已就緒'}
-        </p>
-        {sceneStatus === 'error' && (
-          <button onClick={() => setRetryCount(count => count + 1)} className="mt-2 rounded bg-blue-600 px-3 py-1 text-sm">重新載入</button>
+    }, []);
+    useEffect(() => {
+      void manager.current?.loadWorld(sceneRef.current, setStatus);
+    }, [scene.id, scene.spzUrl, attempt]); // scene metadata changes do not reload the world
+    useEffect(() => {
+      manager.current?.setMode(mode);
+    }, [mode]);
+    useEffect(() => {
+      if (headPose) manager.current?.updateHeadPose(headPose);
+    }, [headPose]);
+    useImperativeHandle(ref, () => ({
+      updateCalibration: (value) => manager.current?.updateCalibration(value),
+      setDebugMode: (enabled) => manager.current?.setDebugMode(enabled),
+      resetView: () => manager.current?.resetView(),
+    }));
+    return (
+      <div className="world-canvas">
+        <div
+          ref={container}
+          tabIndex={0}
+          onPointerDown={() =>
+            container.current?.focus({ preventScroll: true })
+          }
+          className="canvas-surface"
+          aria-label="3D 場景；滑鼠拖曳旋轉，W A S D 移動"
+        />
+        {status !== "ready" && (
+          <div
+            className="world-loading"
+            style={{
+              backgroundImage: `linear-gradient(#101716b0, #101716ed), url(${scene.thumbnail})`,
+            }}
+          >
+            {status === "loading" ? (
+              <Loader2 className="spin" size={32} />
+            ) : (
+              <AlertCircle size={32} />
+            )}
+            <h2>
+              {status === "loading" ? "正在打開這個世界" : "場景載入失敗"}
+            </h2>
+            <p>
+              {status === "loading"
+                ? "讀取本機場景與空間細節，無須重新生成。"
+                : initError || "請確認場景檔案可用，或返回選擇另一個世界。"}
+            </p>
+            {status === "error" && !initError && (
+              <button
+                className="primary"
+                onClick={() => setAttempt((n) => n + 1)}
+              >
+                <RotateCcw size={16} />
+                重新載入
+              </button>
+            )}
+          </div>
         )}
       </div>
-    </div>
-  );
-});
-
-ThreeView.displayName = 'ThreeView';
-
+    );
+  },
+);
+ThreeView.displayName = "ThreeView";
 export default ThreeView;
