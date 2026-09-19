@@ -18,6 +18,7 @@ from aruco_pose import MarkerTracker, load_calibration
 class LatestSender:
     def __init__(self, url):
         self.url = url
+        self.delivery = dict(sent=0, errors=0, roundtrip_ms=None, capture_to_ack_ms=None)
         self.pending = queue.Queue(maxsize=1)
         self.stop = threading.Event()
         self.worker = threading.Thread(target=self.run, daemon=True)
@@ -32,6 +33,12 @@ class LatestSender:
 
     def run(self):
         last_warning = -float("inf")
+        connection = None
+        if self.url.startswith(("ws://", "wss://")):
+            from websockets.sync.client import connect
+            from websockets.exceptions import WebSocketException
+        else:
+            WebSocketException = URLError
         while not self.stop.is_set():
             try:
                 packet, captured = self.pending.get(timeout=0.1)
@@ -40,14 +47,35 @@ class LatestSender:
             if time.monotonic() - captured > 0.25:
                 continue
             try:
-                request = Request(self.url, data=json.dumps(packet, allow_nan=False).encode(),
-                    headers={"Content-Type": "application/json"}, method="POST")
-                with urlopen(request, timeout=0.25) as response:
-                    response.read()
-            except (URLError, OSError) as error:
+                started = time.monotonic()
+                payload = json.dumps(packet, allow_nan=False)
+                if self.url.startswith(('ws://', 'wss://')):
+                    if connection is None:
+                        connection = connect(self.url, proxy=None, open_timeout=.5,
+                            close_timeout=.1, compression=None, max_size=1024)
+                    connection.send(payload)
+                    reply = json.loads(connection.recv(timeout=.25))
+                    if reply.get('accepted') is not True:
+                        raise ValueError('pose rejected')
+                else:
+                    request = Request(self.url, data=payload.encode(),
+                        headers={"Content-Type": "application/json"}, method="POST")
+                    with urlopen(request, timeout=0.25) as response:
+                        response.read()
+                now = time.monotonic()
+                self.delivery = dict(sent=self.delivery['sent']+1, errors=self.delivery['errors'],
+                    roundtrip_ms=round((now-started)*1000,2), capture_to_ack_ms=round((now-captured)*1000,2))
+            except (URLError, OSError, WebSocketException, ValueError) as error:
+                self.delivery = dict(self.delivery, errors=self.delivery['errors']+1)
+                if connection is not None:
+                    connection.close()
+                    connection = None
                 if time.monotonic() - last_warning > 5:
                     print(f"Pose receiver unavailable; retrying latest pose: {error}", flush=True)
                     last_warning = time.monotonic()
+
+        if connection is not None:
+            connection.close()
 
     def close(self):
         self.stop.set()
@@ -61,7 +89,7 @@ def main():
     parser.add_argument("--marker-m", type=float, default=0.053, help="measured BLACK square edge in meters (default: 0.053, measured printed B)")
     parser.add_argument("--id", type=int, default=0)
     parser.add_argument("--map-id", default="screen-B", help="change if physical B moves")
-    parser.add_argument("--url", default="http://127.0.0.1:8765/api/pose")
+    parser.add_argument("--url", default="ws://127.0.0.1:8767/api/pose/publish")
     parser.add_argument("--max-error-px", type=float, default=2)
     parser.add_argument("--preview", action="store_true", help="requires GUI; Q exits")
     args = parser.parse_args()

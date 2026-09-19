@@ -13,6 +13,7 @@ class PosePipeline:
         square_points(marker_m)
         if calibration and approximate:
             raise ValueError("choose calibrated or approximate mode, not both")
+        self.board_path = board_path
         self.board = load_board(board_path, marker_m) if board_path else None
         self.target_ids = sorted(self.board) if self.board else [0]
         self.marker_m = marker_m

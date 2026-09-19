@@ -136,8 +136,8 @@ export class AdaptivePoseSmoother {
       const angularVelocity = sinHalf > 1e-9 ? axis.multiplyScalar(angle / (sinHalf * dt)) : axis.set(0, 0, 0);
       this.angularVelocity.lerp(angularVelocity, derivativeAlpha);
       // Meters/second for position (estimated units in demo), radians/second for rotation.
-      this.position.lerp(rawPosition, alpha(1.5 + 4 * this.velocity.length()));
-      this.rotation.slerp(rawRotation, alpha(2 + 0.5 * this.angularVelocity.length())).normalize();
+      this.position.lerp(rawPosition, alpha(2 + 6 * this.velocity.length()));
+      this.rotation.slerp(rawRotation, alpha(2.5 + 0.7 * this.angularVelocity.length())).normalize();
     }
     if (this.time === null || dt > 0) {
       this.paused = false;

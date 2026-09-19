@@ -5,6 +5,8 @@ import { CalibrationData } from '../utils/calibration';
 
 interface ThreeViewProps {
   headPose: HeadPose | null;
+  renderSmoothing?: boolean;
+  poseEpoch?: number;
 }
 
 export interface ThreeViewHandle {
@@ -18,7 +20,7 @@ export interface ThreeViewHandle {
   getModelRotation: () => { x: number; y: number; z: number };
 }
 
-const ThreeView = forwardRef<ThreeViewHandle, ThreeViewProps>(({ headPose }, ref) => {
+const ThreeView = forwardRef<ThreeViewHandle, ThreeViewProps>(({ headPose, renderSmoothing = true, poseEpoch = 0 }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneManagerRef = useRef<ThreeSceneManager | null>(null);
   useEffect(() => {
@@ -51,10 +53,13 @@ const ThreeView = forwardRef<ThreeViewHandle, ThreeViewProps>(({ headPose }, ref
     };
   }, []);
 
+  useEffect(() => { sceneManagerRef.current?.resetHeadPose(); }, [poseEpoch]);
+  useEffect(() => { sceneManagerRef.current?.setRenderSmoothing(renderSmoothing); }, [renderSmoothing]);
+
   useEffect(() => {
     if (headPose && sceneManagerRef.current) {
       sceneManagerRef.current.updateHeadPose(headPose);
-    }
+    } else { sceneManagerRef.current?.holdHeadPose(); }
   }, [headPose]);
 
   useImperativeHandle(ref, () => ({

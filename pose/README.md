@@ -138,3 +138,37 @@ ID 0～3 共用版面中央原點，任何一張清楚可見時都可定位；�
 相機 `/status` 的 `timings_ms` 為各階段耗時的指數移動平均（毫秒）：`capture` 包含等待影格與解碼、`detect` 為 ArUco、`pose` 為姿態 pipeline、`overlay` 包含排入傳送佇列與畫框、`jpeg` 為預覽編碼。`outcomes` 是本次相機開啟以來，各追蹤結果／失效原因的逐幀累計。編譯網頁等同機負載也會影響耗時；HTTP 傳送不包含在這些數值中。此路徑使用 CPU，未使用 NPU。
 
 預覽預設輸出 320×240 JPEG（`--preview-width 640` 可恢復較大預覽），網頁每次讀完後等 100 ms 再取得預覽；定位仍使用原始 640×480。姿態 HTTP 輪詢以 33 ms 為起始間隔目標，扣除本次請求耗時，不會同時發出多筆請求；網路慢時以實際請求完成速度為限。預覽刷新率和定位處理 FPS 不同。
+
+
+### WebSocket 與逐畫面平滑（2026-09-19）
+
+相機預設經 `ws://127.0.0.1:8767/api/pose/publish` 傳送，relay 以 `/api/pose/ws` 推送到瀏覽器（5173 的 Vite 代理轉至 8767）。HTTP 8765 `/api/pose` 保留供診斷及舊客戶端使用，前端不再輪詢姿態。每個瀏覽器只有一筆未確認資料；確認後再取最新姿態，不重播積壓資料。斷線 500 ms 後重連，250 ms 無新姿態時凍結。介面的 RTT 是應用程式確認往返時間，包含瀏覽器排程；不是完整相機到螢幕延遲。
+
+安裝／執行：
+```sh
+python3 -m venv --system-site-packages .venv
+.venv/bin/python -m pip install websockets==15.0.1
+.venv/bin/python pose/relay.py
+.venv/bin/python pose/camera_preview.py --host 0.0.0.0 --approximate --marker-m .053 --board public/markers/aruco-board-A4-55mm-ids0-3.json
+```
+
+前端的「姿態防抖」作用於量測；「畫面平滑」則每次 requestAnimationFrame 更新位置與 quaternion SLERP。後者使用 25 ms 時間常數，固定目標約 58 ms 到達 90%，會增加少量跟隨延遲。兩個開關可獨立比較。失去追蹤時凍結已顯示的位置，重設原點清除兩層歷史；沒有運動外推。防抖位置截止頻率改成 `2 + 6*speed`，旋轉 `2.5 + 0.7*angularSpeed`，避免兩層都過度平滑。
+
+### 網頁相機校正
+
+在 5173 開啟 `/api/camera/calibration`，手機顯示 `/markers/calibration-checkerboard.png`（亦有 A4 PDF）。這是 10×7 格／9×6 內角點棋盤；收集至少 16 張不同位置、距離、傾角的清晰影像。使用正在追蹤的同一個相機串流原始 640×480 影像，不另開相機。校正 intrinsics 不依賴棋盤格實際尺寸；螢幕必須保持平面、固定顯示比例，並避開反光／摩爾紋。
+
+程式拒絕近似重複照片、覆蓋或傾角不足的資料；每四張保留一張，先用其他影像求內參，再檢查保留視角的 PnP 重投影誤差。需訓練 RMS ≤1 px、保留視角各自 RMS ≤1.5 px，以及合理焦距／主點。通過仍應用實際移動距離檢查精度，低重投影誤差不是完整精度保證。
+
+按「套用」才產生本機 `camera.json` 並切换目前 pipeline；3D 頁需按重設原點。影像與每次結果存在 git 忽略的 `calibration/`。之後重啟相機改用 `--calibration camera.json`，不要同時指定 `--approximate`。實際校正必須由使用者收集照片完成，不能以合成測試冒充。
+
+### 曝光與濾波實驗紀錄
+
+在當時場景各取約 6 秒：原自動曝光 73/78 幀有效（94%）、FPS 中位數 13.9、預覽灰階均值約98；手動8.3ms且關閉動態降幀為105/105幀有效、FPS16.1、灰階均值約40。場景／動作沒有固定，不能作為因果或效能保證。因明顯變暗，已恢復 auto_exposure=3、exposure_time_absolute=156（自動模式下非即時曝光讀值）、exposure_dynamic_framerate=1、gain=8。若再測短曝光，應搭配照明並檢查實際漏偵測。
+
+合成20Hz量測／60Hz渲染、±5mm交替雜訊、0.1m/s勻速：加畫面平滑後，原濾波參數測得靜止RMS約0.55mm／移動落後約116ms；調整後約0.69mm／93ms。此結果不含真實相機、網路或渲染耗時。
+
+
+本機已在 2026-09-19 完成實際 16 視角校正並套用：RMS 0.123 px，保留視角 RMS 0.153 px／最大0.177 px。去除影像路徑的內參備份為 `pose/calibrations/logitech-c270-640x480.json`，可用 `--calibration pose/calibrations/logitech-c270-640x480.json` 重啟；此參數只適用這顆 C270、640×480、相同光學設定。實際距離仍需量尺驗證，不能從重投影誤差直接推算毫米精度。
+
+本次驗證：Python 21 項、Node 23 項測試通過，Vite build 通過；完整 app TypeScript 檢查仍有既有 `ModelViewer.tsx`／`useFaceLandmarker.ts` 錯誤，本次變更檔未出現新型別錯誤。

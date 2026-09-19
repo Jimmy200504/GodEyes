@@ -1,0 +1,37 @@
+{
+  "camera_matrix": [
+    [
+      734.8735839619336,
+      0.0,
+      321.1001975610948
+    ],
+    [
+      0.0,
+      735.0329114411439,
+      260.1644588446821
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "dist_coeffs": [
+    -0.022903096529020072,
+    1.1864634796928237,
+    0.0010549687164440916,
+    -0.0031364946635430834,
+    -3.3962905091070685
+  ],
+  "image_size": [
+    640,
+    480
+  ],
+  "rms_reprojection_px": 0.12267466676017515,
+  "validation_rms_px": 0.15257058832509998,
+  "validation_max_px": 0.17714828252792358,
+  "pattern": "9x6 inner corners; square units arbitrary (intrinsics only)",
+  "camera": "Logitech C270 used by this demo; intrinsics are specific to this physical camera",
+  "views": 16,
+  "calibration_date": "2026-09-19"
+}

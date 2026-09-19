@@ -2,6 +2,7 @@
 from collections import Counter
 import argparse
 import json
+from pathlib import Path
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -10,6 +11,7 @@ import numpy as np
 from aruco_pose import DICTIONARY
 from aruco_sender import LatestSender
 from pose_pipeline import PosePipeline
+from calibration_web import CalibrationSession, PAGE as CALIBRATION_PAGE
 
 PAGE = """<!doctype html><html lang="zh-Hant"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>GodEyes 相機預覽</title>
@@ -39,6 +41,10 @@ document.getElementById('pose-status').textContent=s.pose_tracking==='tracking'?
 class Camera:
     def __init__(self, device, pipeline, sender, preview_width=320):
         self.pipeline = pipeline
+        self.raw_frame = None
+        self.raw_updated = 0
+        self.calibration_session = CalibrationSession()
+        self.pending_pipeline = None
         self.sender = sender
         self.device = device
         self.preview_width = preview_width
@@ -76,6 +82,12 @@ class Camera:
                 if not ok:
                     raise RuntimeError('Camera read failed')
                 captured = time.monotonic()
+                with self.lock:
+                    self.raw_frame = frame.copy()
+                    self.raw_updated = captured
+                    if self.pending_pipeline is not None:
+                        self.pipeline = self.pending_pipeline
+                        self.pending_pipeline = None
                 corners, ids, _ = detector.detectMarkers(frame)
                 detected = time.monotonic()
                 packet, reprojection = self.pipeline.update(corners, ids,
@@ -134,14 +146,18 @@ def make_server(camera, host, port):
         def do_GET(self):
             path = self.path.split('?',1)[0]
             code = 200
+            if path == '/calibration/status':
+                return self.json_reply(camera.calibration_session.status())
             with camera.lock:
                 if path == '/':
                     body,mime = PAGE.encode(),'text/html; charset=utf-8'
+                elif path == '/calibration':
+                    body,mime = CALIBRATION_PAGE.encode(),'text/html; charset=utf-8'
                 elif path == '/frame.jpg':
                     body,mime = camera.jpg or b'','image/jpeg'
                     if not body: code = 503
                 elif path == '/status':
-                    data = dict(camera.state,age_ms=None if camera.updated is None else
+                    data = dict(camera.state,delivery=dict(camera.sender.delivery),age_ms=None if camera.updated is None else
                         round((time.monotonic()-camera.updated)*1000))
                     body,mime = json.dumps(data).encode(),'application/json'
                 else:
@@ -154,6 +170,43 @@ def make_server(camera, host, port):
                 self.end_headers()
                 self.wfile.write(body)
             except (BrokenPipeError, ConnectionResetError): pass
+        def json_reply(self, data, code=200):
+            body=json.dumps(data).encode()
+            try:
+                self.send_response(code);self.send_header('Content-Type','application/json')
+                self.send_header('Content-Length',str(len(body)));self.send_header('Cache-Control','no-store')
+                self.end_headers();self.wfile.write(body)
+            except (BrokenPipeError,ConnectionResetError): pass
+
+        def do_POST(self):
+            action=self.path.rsplit('/',1)[-1]
+            session=camera.calibration_session
+            try:
+                if not self.path.startswith('/calibration/'):
+                    return self.json_reply(dict(message='not found'),404)
+                if action=='capture':
+                    with camera.lock:
+                        if camera.raw_frame is None or time.monotonic()-camera.raw_updated>.5:
+                            raise ValueError('沒有新鮮相機影像')
+                        frame=camera.raw_frame.copy()
+                    session.capture(frame)
+                elif action=='solve': session.solve()
+                elif action=='reset': session.reset()
+                elif action=='apply':
+                    with session.lock:
+                        if session.result is None: raise ValueError('請先完成校正計算')
+                        result=Path(session.result).read_text()
+                        # Stable active filename; original per-session result remains for review.
+                        Path('camera.json').write_text(result)
+                        old=camera.pipeline
+                        pipeline=PosePipeline(old.marker_m,'camera.json',False,old.board_path)
+                        with camera.lock: camera.pending_pipeline=pipeline
+                        session.message='已套用，請回 3D 頁面重設位置與正前方'
+                else: return self.json_reply(dict(message='not found'),404)
+                return self.json_reply(session.status())
+            except (ValueError, OSError, cv2.error) as error:
+                with session.lock: session.message=str(error)
+                return self.json_reply(session.status(),400)
     return ThreadingHTTPServer((host,port),Handler)
 
 
@@ -168,7 +221,7 @@ if __name__ == '__main__':
     parser.add_argument('--calibration', help='camera.json from real calibration')
     parser.add_argument('--approximate', action='store_true', help='rough demo intrinsics; NOT calibrated metric tracking')
     parser.add_argument('--marker-m', type=float, default=.053)
-    parser.add_argument('--url', default='http://127.0.0.1:8765/api/pose')
+    parser.add_argument('--url', default='ws://127.0.0.1:8767/api/pose/publish')
     args = parser.parse_args()
     pipeline = PosePipeline(args.marker_m, args.calibration, args.approximate, args.board)
     sender = LatestSender(args.url)

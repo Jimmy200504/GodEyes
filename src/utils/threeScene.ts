@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RenderPoseSmoother } from './renderPose';
 import { SparkRenderer, SplatMesh } from '@sparkjsdev/spark';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
@@ -22,6 +23,7 @@ export class ThreeSceneManager {
   private animationFrameId: number | null = null;
   private isRunning = false;
   private currentHeadPose: HeadPose = { x: 0.5, y: 0.5, z: 1 };
+  private renderPose = new RenderPoseSmoother();
   private debugMode: boolean = false;
   private debugHelpers: THREE.Object3D[] = [];
   private roomObjects: THREE.Object3D[] = [];
@@ -264,8 +266,12 @@ export class ThreeSceneManager {
   }
 
   updateHeadPose(headPose: HeadPose): void {
-    this.currentHeadPose = headPose;
+    this.renderPose.setTarget(headPose, performance.now());
   }
+
+  holdHeadPose(): void { this.renderPose.hold(); }
+  resetHeadPose(): void { this.renderPose.reset(); }
+  setRenderSmoothing(enabled: boolean): void { this.renderPose.enabled = enabled; }
 
   setDebugMode(enabled: boolean): void {
     this.debugMode = enabled;
@@ -333,6 +339,7 @@ export class ThreeSceneManager {
 
     this.animationFrameId = requestAnimationFrame(this.animate);
 
+    this.currentHeadPose = this.renderPose.step(performance.now()) ?? this.currentHeadPose;
     this.offAxisCamera.updateFromHeadPose(this.currentHeadPose);
 
     if (this.debugMode && this.debugHelpers.length > 1) {

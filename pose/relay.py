@@ -33,7 +33,8 @@ def validate(p):
 
 class Store:
     def __init__(self):
-        self.lock = threading.Lock()
+        self.lock = threading.Condition()
+        self.revision = 0
         self.pose = None
         self.received = 0
 
@@ -43,6 +44,8 @@ class Store:
             if self.pose and self.pose["session_id"] == p["session_id"] and p["seq"] <= self.pose["seq"]:
                 raise ValueError("out-of-order sequence")
             self.pose, self.received = p, time.monotonic()
+            self.revision += 1
+            self.lock.notify_all()
 
     def get(self):
         with self.lock:
@@ -50,8 +53,50 @@ class Store:
             return {"pose": self.pose, "age_ms": age}
 
 
-def make_server(host, port):
-    store = Store()
+    def wait(self, revision, timeout=.1):
+        with self.lock:
+            self.lock.wait_for(lambda: self.revision != revision, timeout)
+            return self.revision, self.get()
+
+
+def make_websocket_server(store, host, port):
+    from websockets.sync.server import serve
+    from websockets.exceptions import ConnectionClosed
+
+    def handler(connection):
+        if connection.request.path == '/api/pose/publish':
+            try:
+                for message in connection:
+                    store.put(json.loads(message))
+                    connection.send('{"accepted":true}')
+            except (ConnectionClosed, ValueError):
+                connection.close(1008, 'invalid pose')
+            return
+        if connection.request.path != '/api/pose/ws':
+            connection.close(1008, 'unknown path')
+            return
+        revision, rtt = -1, 0
+        try:
+            while True:
+                revision, data = store.wait(revision)
+                sent = time.monotonic()
+                data.update(sent_monotonic_ms=sent*1000, transport_rtt_ms=rtt)
+                connection.send(json.dumps(data, separators=(',', ':'), allow_nan=False))
+                # One in-flight update per client. Slow clients skip superseded poses.
+                ack = json.loads(connection.recv(timeout=1))
+                if ack != {'ack': data['sent_monotonic_ms']}:
+                    connection.close(1008, 'expected acknowledgement')
+                    return
+                rtt = (time.monotonic()-sent)*1000
+        except (ConnectionClosed, TimeoutError, ValueError):
+            connection.close()
+
+    return serve(handler, host, port, compression=None, max_size=4096,
+                 max_queue=1, close_timeout=1)
+
+
+def make_server(host, port, store=None):
+    store = store or Store()
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):
@@ -91,6 +136,18 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument('--ws-port', type=int, default=8767)
     args = parser.parse_args()
     print(f"Pose receiver http://{args.host}:{args.port}/api/pose", flush=True)
-    make_server(args.host, args.port).serve_forever()
+    store = Store()
+    http = make_server(args.host, args.port, store)
+    with make_websocket_server(store, args.host, args.ws_port) as websocket:
+        worker = threading.Thread(target=websocket.serve_forever, daemon=True)
+        worker.start()
+        try:
+            http.serve_forever()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            websocket.shutdown()
+            http.server_close()
