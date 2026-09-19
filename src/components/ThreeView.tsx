@@ -15,6 +15,7 @@ interface ThreeViewProps {
 }
 
 export interface ThreeViewHandle {
+  calibratePalm: () => boolean;
   updateCalibration: (calibration: CalibrationData) => void;
   setDebugMode: (enabled: boolean) => void;
   updateModelPosition: (x: number, y: number, z: number) => void;
@@ -76,6 +77,7 @@ const ThreeView = forwardRef<ThreeViewHandle, ThreeViewProps>(({ headPose, onGes
   }, [headPose, allowCoast, posePrediction]);
 
   useImperativeHandle(ref, () => ({
+    calibratePalm: () => sceneManagerRef.current?.calibratePalm() ?? false,
     updateCalibration: (calibration: CalibrationData) => {
       if (sceneManagerRef.current) {
         sceneManagerRef.current.updateCalibration(calibration);

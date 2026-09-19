@@ -1,6 +1,7 @@
 import * as THREE from 'three';
+import { GestureSlamClutch } from './gestureSlamClutch';
 import { GestureNavigation } from './gestureNavigation';
-import { connectGestureSocket, type GestureTelemetry } from './gestureSocket';
+import { connectGestureSocket, type GestureTelemetry, type GestureConnection } from './gestureSocket';
 import { RenderPoseSmoother } from './renderPose';
 import { SparkRenderer, SplatMesh } from '@sparkjsdev/spark';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -37,7 +38,9 @@ export class ThreeSceneManager {
   private worldReady = false;
   private disposed = false;
   private gesture = new GestureNavigation();
-  private disconnectGesture: () => void;
+  private slamClutch = new GestureSlamClutch();
+  private poseVersion = 0;
+  private disconnectGesture: GestureConnection;
   private lastFrame = performance.now();
 
   constructor(options: ThreeSceneOptions) {
@@ -71,7 +74,10 @@ export class ThreeSceneManager {
       (command, age) => this.gesture.accept(command, age),
       this.gesture.clear,
       options.onGestureStatus ?? (() => {}),
-      options.onGestureTelemetry,
+      data => {
+        this.slamClutch.observeHand(data.handPresent, data.accepted, performance.now());
+        options.onGestureTelemetry?.({ ...data, slamClutched: this.slamClutch.held, slamResumeWaiting: this.slamClutch.waiting });
+      },
     );
     this.loadShoeModel();
     this.createWireframeRoom();
@@ -279,13 +285,16 @@ export class ThreeSceneManager {
   }
 
   updateHeadPose(headPose: HeadPose): void {
+    if (this.slamClutch.waiting) this.renderPose.reset();
+    this.poseVersion++;
     this.renderPose.setTarget(headPose, performance.now(), Math.max(0, 250-(headPose.ageMs ?? 0)));
   }
 
   coastHeadPose(): void { this.renderPose.coast(); }
   setPosePrediction(enabled: boolean): void { this.renderPose.predictionEnabled = enabled; this.renderPose.hold(); }
+  calibratePalm(): boolean { this.gesture.clear(); return this.disconnectGesture.calibratePalm(); }
   holdHeadPose(): void { this.renderPose.hold(); }
-  resetHeadPose(): void { this.renderPose.reset(); this.gesture.reset(); }
+  resetHeadPose(): void { this.renderPose.reset(); this.gesture.reset(); this.slamClutch.reset(); this.currentHeadPose = { x: .5, y: .5, z: 1 }; }
   setRenderSmoothing(enabled: boolean): void { this.renderPose.enabled = enabled; }
 
   setDebugMode(enabled: boolean): void {
@@ -355,7 +364,7 @@ export class ThreeSceneManager {
     this.animationFrameId = requestAnimationFrame(this.animate);
 
     this.currentHeadPose = this.renderPose.step(performance.now()) ?? this.currentHeadPose;
-    this.offAxisCamera.updateFromHeadPose(this.currentHeadPose);
+    this.offAxisCamera.updateFromHeadPose(this.slamClutch.apply(this.currentHeadPose, this.poseVersion));
     const now = performance.now();
     this.gesture.update((now - this.lastFrame) / 1000, this.camera.quaternion, now);
     this.lastFrame = now;

@@ -20,15 +20,16 @@ from gesture_control import GestureGate, STOP  # noqa: E402
 
 class LatestGesture:
     def __init__(self, backend='unknown'):
+        self.calibration_requested = threading.Event()
         self.backend = backend
         self.lock = threading.Lock()
         self.packet = None
         self.captured = 0.0
 
-    def put(self, gesture, command, captured, status='tracking', confidence=None, inference_ms=None):
+    def put(self, gesture, command, captured, status='tracking', confidence=None, inference_ms=None, control_hint=None, hand_present=False):
         with self.lock:
             self.packet = dict(version=1, gesture=gesture, command=command, status=status,
-                               backend=self.backend, confidence=confidence, inference_ms=inference_ms)
+                               backend=self.backend, confidence=confidence, inference_ms=inference_ms, control_hint=control_hint, hand_present=hand_present)
             self.captured = captured
 
     def get(self):
@@ -64,19 +65,17 @@ def infer_frame(frame, tracker, classifier):
     import numpy as np
     detections = tracker(frame)
     if not detections:
-        return 'None', 0.0, 0.5, 0.5
+        return 'None', 0.0, None, None
     landmarks = detections[0][0]
     # Reject collapsed or nonfinite landmarks before classifier normalization.
     if not np.isfinite(landmarks).all() or np.max(np.abs(landmarks - landmarks[0])) < 1e-6:
-        return 'Unknown', 0.0, 0.5, 0.5
+        return 'Unknown', 0.0, [], None
     scores = np.asarray(classifier(landmarks)).reshape(-1)
     if scores.shape != (3,) or not np.isfinite(scores).all():
-        return 'Unknown', 0.0, 0.5, 0.5
+        return 'Unknown', 0.0, [], None
     index = int(np.argmax(scores))
     confidence = float(scores[index])
-    # Palm center is more stable than the fingertip while changing hand shape.
-    center = landmarks[[0, 5, 9, 13, 17]].mean(axis=0)
-    return ('Open', 'Close', 'Point')[index], confidence, float(center[0] / frame.shape[1]), float(center[1] / frame.shape[0])
+    return ('Open', 'Close', 'Point')[index], confidence, landmarks.tolist(), float(detections[0][2])
 
 
 def inference_loop(args, tracker, classifier, latest, stop):
@@ -100,7 +99,7 @@ def inference_loop(args, tracker, classifier, latest, stop):
                     captured = requested - meta['age_ns'] / 1e9
                     key = (meta['session'], meta['seq'])
                     if key == last_key or time.monotonic() - captured >= .25:
-                        gate = GestureGate()
+                        gate.reset_motion()
                         latest.put('None', dict(STOP), time.monotonic(), status='stale')
                         continue
                     last_key = key
@@ -108,18 +107,22 @@ def inference_loop(args, tracker, classifier, latest, stop):
                     if frame is None or frame.shape[:2] != (480, 640):
                         raise ValueError('invalid camera JPEG')
                     inference_started = time.monotonic()
-                    gesture, confidence, x, y = infer_frame(frame, tracker, classifier)
+                    gesture, confidence, landmarks, handedness = infer_frame(frame, tracker, classifier)
                     inference_ms = (time.monotonic() - inference_started) * 1000
-                    command = gate.update(gesture, confidence, x, y, args.mirror)
+                    if latest.calibration_requested.is_set():
+                        latest.calibration_requested.clear()
+                        gate.begin_calibration()
+                    command = gate.update(gesture, confidence, landmarks, args.mirror,
+                                          handedness=handedness, now=meta['capture_ns'] / 1e9)
                     if confidence < .75 and gesture != 'None':
                         gesture = 'Unknown'
                     if time.monotonic() - captured >= .25:
-                        gate = GestureGate()
+                        gate.reset_motion()
                     latest.put(gesture, command, captured, confidence=confidence if gesture != 'None' else None,
-                               inference_ms=round(inference_ms, 2))
+                               inference_ms=round(inference_ms, 2), control_hint=gate.hint, hand_present=landmarks is not None)
         except Exception as error:
             latest.put('None', dict(STOP), time.monotonic(), status='error')
-            gate = GestureGate()
+            gate.reset_motion()
             print(f'Gesture input stopped: {error}', file=sys.stderr, flush=True)
             stop.wait(.5)
 
@@ -133,11 +136,17 @@ def make_server(latest, host, port):
             connection.close(1008, 'unknown path')
             return
         try:
-            while connection.recv(timeout=30) == 'next':
+            while True:
+                message = connection.recv(timeout=30)
+                if message == 'calibrate_palm_out':
+                    latest.calibration_requested.set()
+                    continue
+                if message != 'next':
+                    connection.close(1008, 'expected next or calibrate_palm_out')
+                    return
                 # Limit polling to 30 Hz; inference runs once for all viewers.
                 time.sleep(1 / 30)
                 connection.send(json.dumps(latest.get(), allow_nan=False))
-            connection.close(1008, 'expected next')
         except (ConnectionClosed, TimeoutError):
             connection.close()
 

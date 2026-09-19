@@ -90,3 +90,17 @@ test('pitch clamps and movement stays horizontal after rotation', () => {
   assert.equal(nav.offset.y, 0);
   assert.ok(nav.offset.z < 0);
 });
+
+test('finger up/down translates vertically without rotating; nonfinite vertical input is rejected', () => {
+  const nav = new GestureNavigation();
+  const head = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), .5);
+  for (const sign of [1, -1]) {
+    nav.reset();
+    nav.accept({ ...stop, vertical: sign }, 0, 0);
+    const view = head.clone();
+    nav.update(.05, view, 1);
+    assert.ok(nav.offset.distanceTo(new Vector3(0, sign * .015, 0)) < 1e-9);
+    assert.ok(view.angleTo(head) < 1e-7);
+  }
+  assert.equal(nav.accept({ ...stop, vertical: NaN }, 0, 0), false);
+});

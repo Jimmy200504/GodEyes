@@ -4,7 +4,7 @@
 
 # GodEyes · 頭戴相機姿態傳輸版
 
-本 worktree 已加入 **NPU 手勢移動與旋轉**：張掌控制前後左右、食指控制左右轉向／上下看、握拳停止。板子與電腦的啟動方式見 [手勢控制指南](npu/GESTURE_CONTROL.md)。
+本 worktree 已加入 **NPU 手勢移動與旋轉**：食指指向控制左右平移／升降、掌心正反控制前後、張掌反向揮動控制旋轉、握拳停止。有手時暫停 SLAM 視角更新，手離開後平順接回。板子與電腦的啟動方式見 [手勢控制指南](npu/GESTURE_CONTROL.md)。
 
 目前以 `origin/imx-head-pose-local-slam`（`3e3d076`）為 SLAM 基礎。**頭戴朝外相機 → 板端影格與手勢 NPU → Mac 無標記 SLAM → 瀏覽器疊加手勢移動／旋轉**，不需要 ArUco。SLAM 是自製 sparse 實驗後端，使用任意尺度；原分支的其他後端與實驗開關保留。
 

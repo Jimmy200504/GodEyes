@@ -19,11 +19,13 @@ class TransportTests(unittest.TestCase):
             thread.start()
             try:
                 with connect(f'ws://127.0.0.1:{port}/api/gesture/ws') as socket:
+                    socket.send('calibrate_palm_out')
                     latest.put('Point', dict(STOP, yaw=-1), time.monotonic())
                     socket.send('next')
                     packet = json.loads(socket.recv(timeout=2))
                     self.assertEqual(packet['command']['yaw'], -1)
                     self.assertEqual(packet['status'], 'tracking')
+                    self.assertTrue(latest.calibration_requested.is_set())
                     latest.put('Point', dict(STOP, yaw=-1), time.monotonic() - 1)
                     socket.send('next')
                     packet = json.loads(socket.recv(timeout=2))

@@ -3,6 +3,7 @@ import { Quaternion, Vector3 } from 'three';
 export interface GestureCommand {
   forward: number;
   sideways: number;
+  vertical?: number;
   yaw: number;
   pitch: number;
 }
@@ -23,13 +24,13 @@ export class GestureNavigation {
   private readonly lateral = new Vector3(1, 0, 0);
 
   accept(command: GestureCommand, ageMs: number, now = performance.now()): boolean {
-    if (!command || ![command.forward, command.sideways, command.yaw, command.pitch].every(
+    if (!command || ![command.forward, command.sideways, command.vertical ?? 0, command.yaw, command.pitch].every(
       value => Number.isFinite(value) && Math.abs(value) <= 1,
     ) || !Number.isFinite(ageMs) || ageMs < 0 || ageMs >= 250) {
       this.clear();
       return false;
     }
-    this.command = { ...command };
+    this.command = { ...command, vertical: command.vertical ?? 0 };
     this.deadline = now + 250 - ageMs;
     return true;
   }
@@ -60,6 +61,7 @@ export class GestureNavigation {
     if (this.direction.lengthSq() > 0.0001) this.forward.copy(this.direction).normalize();
     this.right.set(-this.forward.z, 0, this.forward.x);
     this.direction.copy(this.forward).multiplyScalar(command.forward).addScaledVector(this.right, command.sideways);
+    this.direction.y = command.vertical ?? 0;
     if (this.direction.lengthSq() > 1) this.direction.normalize();
     this.offset.addScaledVector(this.direction, dt * 0.3);
   }

@@ -12,7 +12,8 @@ function harness(run) {
   let now = 0, id = 0, clears = 0;
   const timers = new Map(), sockets = [], accepted = [], statuses = [], telemetry = [];
   class Socket {
-    constructor(url) { this.url = url; this.sent = []; sockets.push(this); }
+    static OPEN = 1;
+    constructor(url) { this.url = url; this.sent = []; this.readyState = 1; sockets.push(this); }
     send(value) { this.sent.push(value); }
     close() { this.onclose?.(); }
   }
@@ -84,4 +85,18 @@ test('telemetry clears motion on frame expiry and disconnect without losing the 
   assert.equal(h.telemetry.at(-1).gesture, 'Open');
   ws.close();
   assert.equal(h.telemetry.at(-1).connected, false);
+}));
+
+test('calibration stops motion and ignores an in-flight command until backend acknowledges', () => harness(h => {
+  const ws = h.sockets[0]; ws.onopen(); h.message(ws);
+  assert.equal(h.stop.calibratePalm(), true);
+  assert.equal(ws.sent.at(-1), 'calibrate_palm_out');
+  h.message(ws);
+  assert.equal(h.accepted.length, 1);
+  assert.equal(h.telemetry.at(-1).accepted, false);
+  ws.onmessage({ data: JSON.stringify({ version: 1, age_ms: 0, status: 'tracking', gesture: 'Open', hand_present: true,
+    control_hint: '校正中：手背朝鏡頭', command: { forward: 0, sideways: 0, vertical: 0, yaw: 0, pitch: 0 } }) });
+  assert.equal(h.accepted.length, 2);
+  assert.equal(h.telemetry.at(-1).handPresent, true);
+  assert.equal(h.telemetry.at(-1).command.forward, 0);
 }));

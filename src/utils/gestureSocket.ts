@@ -1,6 +1,9 @@
 import type { GestureCommand } from './gestureNavigation';
 
 export interface GestureTelemetry {
+  slamClutched?: boolean;
+  slamResumeWaiting?: boolean;
+  handPresent: boolean;
   connected: boolean;
   accepted: boolean;
   gesture: string;
@@ -10,7 +13,9 @@ export interface GestureTelemetry {
   ageMs: number;
   command: GestureCommand;
 }
-const zeroCommand = (): GestureCommand => ({ forward: 0, sideways: 0, yaw: 0, pitch: 0 });
+const zeroCommand = (): GestureCommand => ({ forward: 0, sideways: 0, vertical: 0, yaw: 0, pitch: 0 });
+
+export type GestureConnection = (() => void) & { calibratePalm: () => boolean };
 
 /** Pull one result at a time so a slow browser never replays queued motion. */
 export function connectGestureSocket(
@@ -18,14 +23,15 @@ export function connectGestureSocket(
   onStop: () => void,
   onStatus: (status: string) => void,
   onTelemetry?: (data: GestureTelemetry) => void,
-): () => void {
+): GestureConnection {
   let stopped = false;
+  let calibrationPending = false;
   let socket: WebSocket | null = null;
   let retry: ReturnType<typeof setTimeout>;
   let timer: ReturnType<typeof setTimeout>;
   let requested = 0;
   let freshTimer: ReturnType<typeof setTimeout>;
-  let telemetry: GestureTelemetry = { connected: false, accepted: false, gesture: 'None', confidence: null, backend: 'unknown', inferenceMs: null, ageMs: 0, command: zeroCommand() };
+  let telemetry: GestureTelemetry = { handPresent: false, connected: false, accepted: false, gesture: 'None', confidence: null, backend: 'unknown', inferenceMs: null, ageMs: 0, command: zeroCommand() };
   const emit = () => onTelemetry?.({ ...telemetry });
   const halt = (status: string) => {
     clearTimeout(freshTimer);
@@ -54,7 +60,9 @@ export function connectGestureSocket(
         const age = data.age_ms + performance.now() - requested;
         if (data.version !== 1 || typeof data.age_ms !== 'number' || !Number.isFinite(age) || data.age_ms < 0) throw Error('invalid packet');
         clearTimeout(freshTimer);
+        if (typeof data.control_hint === 'string' && data.control_hint.startsWith('校正')) calibrationPending = false;
         telemetry = {
+          handPresent: data.hand_present === true || (data.hand_present === undefined && ['Open', 'Close', 'Point', 'Unknown'].includes(data.gesture)),
           connected: true, accepted: false,
           gesture: typeof data.gesture === 'string' ? data.gesture : 'Unknown',
           confidence: typeof data.confidence === 'number' && Number.isFinite(data.confidence) && data.confidence >= 0 && data.confidence <= 1 ? data.confidence : null,
@@ -66,12 +74,15 @@ export function connectGestureSocket(
           halt(data.status === 'stale' ? '手勢影格過期，已停止' : '等待相機影格，已停止');
         } else if (document.hidden || !document.hasFocus()) {
           halt('頁面未啟用，手勢已停止');
+        } else if (calibrationPending) {
+          halt('等待校正開始，已停止');
         } else if (onCommand(data.command, age)) {
           telemetry.accepted = true;
           telemetry.command = { ...data.command };
           freshTimer = setTimeout(() => { telemetry.ageMs = 250; halt('手勢資料過期，已停止'); }, Math.max(0, 250 - age));
-          const labels: Record<string, string> = { Open: '張掌 · 移動', Point: '食指 · 旋轉', Close: '握拳 · 停止', None: '未偵測到手 · 停止', Unknown: '手勢不確定 · 停止' };
-          onStatus(labels[data.gesture] ?? '手勢停止');
+          const labels: Record<string, string> = { Open: '張掌', Point: '食指 · 平移', Close: '握拳 · 停止', None: '未偵測到手 · 停止', Unknown: '手勢不確定 · 停止' };
+          const hint = typeof data.control_hint === 'string' ? data.control_hint.slice(0, 100) : '';
+          onStatus((labels[data.gesture] ?? '手勢停止') + (hint ? ` · ${hint}` : ''));
         } else halt('手勢資料過期或無效，已停止');
         emit();
         pull();
@@ -90,7 +101,7 @@ export function connectGestureSocket(
   window.addEventListener('blur', blur);
   document.addEventListener('visibilitychange', blur);
   connect();
-  return () => {
+  const disconnect = () => {
     stopped = true;
     clearTimeout(timer);
     clearTimeout(freshTimer);
@@ -100,4 +111,15 @@ export function connectGestureSocket(
     document.removeEventListener('visibilitychange', blur);
     onStop();
   };
+  disconnect.calibratePalm = () => {
+    if (!stopped && socket?.readyState === WebSocket.OPEN) {
+      calibrationPending = true;
+      halt('校正中：張掌，手背朝鏡頭，保持不動');
+      socket.send('calibrate_palm_out');
+      return true;
+    }
+    halt('手勢未連線，無法校正');
+    return false;
+  };
+  return disconnect;
 }
