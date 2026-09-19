@@ -12,7 +12,7 @@ async function loadSource(path) {
   const js = outputText.replace(/from ['"]three['"]/g, `from '${import.meta.resolve('three')}'`);
   return import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
 }
-const { HeadRotationTracker, HeadHeightTracker } = await loadSource('../src/utils/headPose.ts');
+const { HeadRotationTracker, HeadHeightTracker, HeadNavigationTracker } = await loadSource('../src/utils/headPose.ts');
 const { OffAxisCamera } = await loadSource('../src/utils/offAxisCamera.ts');
 const identity = new Matrix4().toArray();
 const calibration = { screenWidthCm: 34, screenHeightCm: 19, viewingDistanceCm: 60 };
@@ -48,11 +48,11 @@ test('height ignores rotation and depth, rejects invalid data and bounds extreme
   }
 });
 
-test('camera height is independent of amplified rotation and does not accumulate', () => {
+test('camera height is independent of 1:1 rotation and does not accumulate', () => {
   const camera = new PerspectiveCamera(75, 1.5, 0.1, 1000);
   const controller = new OffAxisCamera(camera, calibration);
   const orientation = new Quaternion().setFromEuler(new Euler(0.1, 0.2, 0, 'YXZ'));
-  const expected = new Quaternion().setFromEuler(new Euler(0.2, 0.8, 0, 'YXZ'));
+  const expected = new Quaternion().setFromEuler(new Euler(0.1, 0.2, 0, 'YXZ'));
   for (const heightOffset of [0.1, -0.1, -0.1, 0]) {
     controller.updateFromHeadPose({ x: 0.5, y: 0.5, z: 1, orientation, heightOffset });
     assert.equal(camera.position.y, heightOffset);
@@ -62,7 +62,7 @@ test('camera height is independent of amplified rotation and does not accumulate
 });
 
 for (const [axis, direction] of [['x', -1], ['y', 1], ['z', -1]]) {
-  const gain = axis === 'x' ? 2 : 4;
+  const gain = 1;
   test(`${axis}: measured angles reach camera at 1:${gain}`, () => {
     const tracker = new HeadRotationTracker();
     tracker.update(identity);
@@ -81,7 +81,7 @@ for (const [axis, direction] of [['x', -1], ['y', 1], ['z', -1]]) {
     }
   });
 }
-test('combined yaw, pitch and roll use independent gains and remain stable across frames', () => {
+test('combined yaw, pitch and roll remain 1:1 and remain stable across frames', () => {
   const camera = new PerspectiveCamera(75, 1.5, 0.1, 1000);
   const controller = new OffAxisCamera(camera, calibration);
   for (const sign of [-1, 1]) {
@@ -89,7 +89,7 @@ test('combined yaw, pitch and roll use independent gains and remain stable acros
     const yaw = sign * 20 * Math.PI / 180;
     const roll = sign * 5 * Math.PI / 180;
     const orientation = new Quaternion().setFromEuler(new Euler(pitch, yaw, roll, 'YXZ'));
-    const expected = new Quaternion().setFromEuler(new Euler(pitch * 2, yaw * 4, roll * 4, 'YXZ'));
+    const expected = new Quaternion().setFromEuler(new Euler(pitch, yaw, roll, 'YXZ'));
     for (let frame = 0; frame < 3; frame++) {
       controller.updateFromHeadPose({ x: 0.5, y: 0.5, z: 1, orientation });
       assert.ok(camera.quaternion.angleTo(expected) < 1e-6);
@@ -105,4 +105,45 @@ test('recenter uses next valid pose, rejects malformed matrices', () => {
   tracker.update(identity);
   tracker.reset();
   assert.ok(Math.abs(tracker.update(pose).w - 1) < 1e-12);
+});
+
+const metricPose = (x, y, z, yaw = 0) => new Matrix4().compose(
+  new Vector3(x, y, z), new Quaternion().setFromEuler(new Euler(0, yaw, 0)), new Vector3(1, 1, 1)
+).toArray();
+const closePosition = (actual, expected) => {
+  for (const axis of ['x', 'y', 'z']) assert.ok(Math.abs(actual[axis] - expected[axis]) < 1e-9);
+};
+test('head translation controls all camera axes at one centimeter per centimeter', () => {
+  const tracker = new HeadNavigationTracker();
+  tracker.update(metricPose(0, 0, -40));
+  const pose = tracker.update(metricPose(-10, 20, -30));
+  closePosition(pose.position, { x: 0.1, y: 0.2, z: -0.1 });
+  const camera = new PerspectiveCamera();
+  const controller = new OffAxisCamera(camera, calibration);
+  for (let i = 0; i < 3; i++) controller.updateFromHeadPose(pose);
+  closePosition(camera.position, { x: 0.1, y: 0.2, z: 0.5 });
+});
+test('repeated clutch cycles preserve position and ignore the physical return movement', () => {
+  const tracker = new HeadNavigationTracker();
+  tracker.update(metricPose(0, 0, -40));
+  for (let i = 1; i <= 5; i++) {
+    const moved = tracker.update(metricPose(0, 0, -30));
+    closePosition(moved.position, { x: 0, y: 0, z: -0.1 * i });
+    tracker.rebase();
+    assert.equal(tracker.update([NaN]), null);
+    const resumed = tracker.update(metricPose(0, 0, -40));
+    closePosition(resumed.position, moved.position);
+  }
+  tracker.reset();
+  closePosition(tracker.update(metricPose(12, 3, -55)).position, { x: 0, y: 0, z: 0 });
+});
+test('clutch preserves direction and subsequent movement follows the new heading', () => {
+  const tracker = new HeadNavigationTracker();
+  tracker.update(metricPose(0, 0, -40));
+  const before = tracker.update(metricPose(0, 0, -30, Math.PI / 4));
+  tracker.rebase();
+  const after = tracker.update(metricPose(0, 0, -40));
+  assert.deepEqual(after, before);
+  const moved = tracker.update(metricPose(0, 0, -30));
+  closePosition(moved.position, { x: -0.1, y: 0, z: -0.1 });
 });
