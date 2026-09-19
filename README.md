@@ -1,79 +1,62 @@
-# GodEyes
+# GodEyes · 頭戴相機姿態傳輸版
 
-透過攝影機追蹤頭部旋轉，在瀏覽器中以水平 1：4、鉛直 1：2 的角度倍率探索 3D 場景。使用 React、TypeScript、Three.js、MediaPipe Face Landmarker 與 Spark Gaussian Splatting renderer。
+此分支由 `main` 的 `2baad2b` 建立，方向是 **頭戴朝外相機 → 邊緣裝置估計 6DoF → 傳送 pose → 另一台電腦渲染 3D**。邊緣裝置不 host 網站、不渲染場景。
 
-## 目前功能
+目前已實作 **單一固定 ArUco B → PnP → 公尺尺度 pose API → 外部電腦渲染**，包括 webcam 擷取、標記產生與相機校正工具。使用 Logitech webcam 頭戴朝外、沒有 IMU；不需要 A 或 SLAM，尚未做真機精度／效能驗證，也未使用 NPU。板子背景沿用舊 worktree 的 FRDM-i.MX93 記錄。
 
-- 追蹤頭部左右轉動、抬頭低頭與側傾，將估算角度映射到相機旋轉。
-- 以第一個有效姿態作為正前方與高度基準，坐高／蹲低時視角跟著升降；可隨時按「重設正前方與高度」重新設定。
-- 預設載入本機 Marble / Lofi Worlds 場景，可切換橘色格線房間；場景載入失敗時保留格線。
-- 提供螢幕尺寸與觀看距離校正、全螢幕及除錯顯示，校正資料儲存在瀏覽器 localStorage。
-- 保留 GLB 模型載入，以及模型位置、縮放與旋轉控制介面。
+目前執行中的相機預覽已整合 PnP 與 API 傳送，使用 `--approximate` 的未校正示範模式；以真實 B 角點估姿態，但距離與角度尚未精確校正。API 會標為 `estimated`，前端亦明確標示。
 
-目前主要追蹤路徑使用頭部**旋轉**，搭配 W／A／S／D 控制相機位置；頭部上下位移會平滑映射至相機高度（最多上下 0.5 公尺），左右與前後位移仍由鍵盤控制。高度使用臉部姿態矩陣的估算值，實際尺度可能因鏡頭與臉型而異。程式仍保留以位置計算 off-axis 投影的實作，供其他輸入路徑使用。水平轉頭 10° 時，相機轉動 40°；抬頭或低頭 10° 時，相機轉動 20°，側傾維持 4 倍，實際追蹤效果仍取決於攝影機與臉部辨識。
+先看 [簡短 plan](pose/PLAN.md) 和 [真實相機啟動指南](pose/README.md)。下方 mock 只用於傳輸／渲染測試。
 
-## 本機啟動
+## 啟動原型
 
-需要 Node.js 20.19+（20.x）或 22.12+，以及可使用攝影機、WebGL 2 和 WebAssembly 的瀏覽器。
+在渲染電腦，需要 Python 3 與 Node.js（沿用 Vite 7 的 Node 要求）。各指令在獨立終端執行：
 
-```bash
-git clone https://github.com/Jimmy200504/GodEyes.git
-cd GodEyes
+```sh
+python3 pose/relay.py
 npm ci
 npm run dev
+python3 pose/mock_sender.py
 ```
 
-開啟終端機顯示的本機網址（通常為 `http://localhost:5173`），允許攝影機存取。執行目前前端不需要 `.env` 或 API key；MediaPipe 模型與 WASM 仍需連線下載。
+開啟 Vite 網址。畫面會標示「模擬資料（非相機追蹤）」並以 1:1 位移／旋轉移動既有 3D 場景。前端不要求 webcam、不載入 MediaPipe CDN。重設按鈕以接下來的有效姿態建立原點。
 
-1. 首次開啟時輸入螢幕寬、高與觀看距離，或略過校正。
-2. 正視螢幕，等待追蹤成功，再按右下角「重設正前方與高度」。
-3. 點擊場景後，W／S 前進後退、A／D 左右平移；按「重設位置」回到起點。轉動頭部探索場景；左上角可切換 Marble 場景與格線房間。
-4. 左下角可開啟全螢幕、校正與除錯顯示。
-5. 右上角控制面板可調整模型位置、大小與旋轉（需有效 GLB 模型）。
+兩台機器時，在渲染電腦執行 `python3 pose/relay.py --host 0.0.0.0`，邊緣裝置執行 `python3 pose/mock_sender.py --url http://RENDER_PC_IP:8765/api/pose`。邊緣端只需傳送器，不需 npm 或網站資產。這個 stdlib 接收器限可信 LAN 開發驗證，沒有認證／TLS；正式網站需同源代理 `/api/pose` 並部署正式接收服務，Vite proxy 不會包含在 `dist/`。
 
-## 開發指令
+## API 與姿態來源接點
 
-| 指令 | 用途 |
-| --- | --- |
-| `npm run dev` | 啟動 Vite 開發伺服器 |
-| `npm run build` | 產生 `dist/` 正式版檔案 |
-| `npm run preview` | 預覽正式版 |
-| `npm run lint` | 執行 ESLint |
-| `node --test tests/*.test.mjs` | 驗證旋轉映射、重設方向與鍵盤移動 |
+`POST /api/pose` 送一筆最新姿態，`GET /api/pose` 回 `{ "pose": ..., "age_ms": ... }`。接收端不累積影像或歷史佇列。前端以約 30 Hz 輪詢（另加請求耗時），不是效能承諾。
 
-部署時以 `dist/` 作為靜態網站根目錄，並使用 HTTPS 以取得攝影機權限；localhost 可用 HTTP。現有模型載入使用 `/models/shoe.glb` 絕對路徑，若部署在子路徑，需先調整資源路徑與 Vite base。
-
-目前快照已通過正式版建置與 10 個旋轉、高度與鍵盤移動測試。`npm run lint` 目前會在載入 `@typescript-eslint/no-unused-expressions` 時因 `allowShortCircuit` 選項錯誤中止；需先修正 ESLint 與 TypeScript ESLint 的規則相容性。
-
-## 專案結構
-
-```text
-src/
-  App.tsx                         主畫面與控制狀態
-  components/FaceMeshView.tsx      攝影機、臉部姿態與重設方向
-  components/ThreeView.tsx         場景容器與切換介面
-  components/CalibrationWizard.tsx 校正介面
-  components/ShoeControlPanel.tsx  模型控制面板
-  utils/headPose.ts               姿態矩陣與相對旋轉
-  utils/offAxisCamera.ts          相機旋轉與 off-axis 投影
-  utils/threeScene.ts             Three.js、GLB 與 Spark 場景
-  utils/calibration.ts            校正儲存
-public/
-  scenes/                         本機 SPZ 場景與來源說明
-  models/                         模型資源
-  media/                          既有展示素材
-tests/
-  headRotation.test.mjs           角度映射與重設測試
+```json
+{
+  "version": 1,
+  "frame": "opencv-c2w",
+  "session_id": "new-uuid-per-process-start",
+  "map_id": "room-map-1",
+  "source": "your-slam-backend",
+  "seq": 42,
+  "capture_monotonic_ns": 1400000000,
+  "tracking": "tracking",
+  "scale": "metric",
+  "position": [0.1, 0.0, 0.2],
+  "quaternion_xyzw": [0.0, 0.0, 0.0, 1.0]
+}
 ```
 
-## 資源與已知限制
+- Pose 是相機到世界的剛體變換 `T_wc`：`position` 為相機中心，quaternion 為相機座標軸在地圖中的方向，順序 **x,y,z,w**。相機局部座標遵守 OpenCV：右 X、下 Y、前 Z。世界座標可任意，但同一 map 必須一致。
+- 公尺尺度填 `metric`；純單目且未定尺度填 `arbitrary`，前端會凍結，不能假稱公尺。若有已知距離校正，在 adapter 將整個地圖平移量換算成公尺。
+- `seq` 每個 session 嚴格遞增；`capture_monotonic_ns` 是從 session 起點算的擷取時間戳（目前 webcam 來源為 read 完成時間，非硬體曝光時間）（安全整數），不要填跨裝置不可直接比較的絕對 monotonic 值。傳送端應丟棄過期影格，只送最新結果。
+- `estimated` 專供明確啟用的粗估 demo，前端允許試動但顯示未校正；`arbitrary` 仍凍結。狀態為 `initializing / tracking / lost / relocalizing`。非 tracking、接收資料超過 250 ms、任意尺度（arbitrary）時維持最後視角。接收 age 不含 SLAM 處理和發送前延遲，端到端延遲必須另外量測；本版加上 GET 往返時間作保守過期判斷。
+- 重啟改 `session_id`；重建／切換世界座標改 `map_id`，前端要求重設，避免瞬移。同地圖 loop closure 也可能修正 pose；目前未平滑修正，adapter 應將不連續的大幅座標修正視為 map revision。
+- 前端先算 `T_relative = inverse(T_initial) * T_current`，再用 `S = diag(1,-1,-1,1)` 算 `S * T_relative * S`，將初始視線當作 Three.js 的 -Z。保持既有場景出生點的 Z 偏移，不沿用臉部追蹤倍率。
+- 本原型只支援一個姿態來源；不要同時啟動 mock 與真實 SLAM。傳的是相機中心，不是眼睛中心；之後可加入固定的相機到頭部／眼睛外參。
 
-- `public/scenes/lofi-world.spz` 是約 7.2 MB 的 500k-splat 範例，來源記錄在 [場景說明](public/scenes/README.md)。此檔案由本機提供，不需 Marble 帳號。
-- 目前 `public/models/shoe.glb`、`face.glb` 是 URL 文字佔位檔，並非 GLB 二進位檔，因此鞋子模型不能正常載入。使用模型功能前，請以有效且有權使用的 GLB 替換 `shoe.glb`。
-- `public/media/demo.gif` 與 `example.gif` 也是文字佔位檔；既有截圖不代表目前 Marble 介面。
-- 場景與模型資產的授權須依各來源確認；Spark 的軟體授權不代表外部場景素材的授權。
-- 大角度轉頭或遮住臉可能導致追蹤中斷；未偵測到臉時保留最後視角。載入失敗可按「重試」，攝影機權限被拒時需先在瀏覽器設定中允許。
+## 驗證
 
-## 技術背景
+```sh
+python3 -m unittest discover -s pose -p 'test_*.py'
+node --test tests/*.test.mjs
+npm run build
+```
 
-專案延續 head-coupled perspective 的探索，並加入頭部旋轉與高度追蹤與 Gaussian Splatting 場景。[HEAD_COUPLED_PERSPECTIVE.md](HEAD_COUPLED_PERSPECTIVE.md) 保留早期設計筆記；目前行為以本 README 與程式碼為準。
+包含 API round trip、無效 quaternion／數值拒收、亂序拒收、座標轉換、相對方向、失聯與 map reset 測試。真機 FPS、熱穩定性、追蹤精度與 NPU 加速均未驗證。演算法路線與實測驗收見 [HEAD_MOUNTED_POSE.md](HEAD_MOUNTED_POSE.md)。

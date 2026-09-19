@@ -1,172 +1,53 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { Maximize, Minimize, Settings, Bug } from 'lucide-react';
-import FaceMeshView from './components/FaceMeshView';
-import ThreeView, { ThreeViewHandle } from './components/ThreeView';
-import CalibrationWizard from './components/CalibrationWizard';
-import { HeadPose } from './utils/headPose';
-import { calibrationManager, CalibrationData } from './utils/calibration';
+import { useEffect, useRef, useState } from 'react';
+import ThreeView from './components/ThreeView';
+import type { HeadPose } from './utils/headPose';
+import { RemotePoseTracker } from './utils/remotePose';
 
-function App() {
-  const [isCdnAvailable, setIsCdnAvailable] = useState(true);
-  const [isCheckingCdn, setIsCheckingCdn] = useState(true);
-  const [currentHeadPose, setCurrentHeadPose] = useState<HeadPose | null>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showCalibration, setShowCalibration] = useState(false);
-  const [debugMode, setDebugMode] = useState(false);
-  const [controlsContainer, setControlsContainer] = useState<HTMLDivElement | null>(null);
-  const threeViewRef = useRef<ThreeViewHandle>(null);
+export default function App() {
+  const tracker = useRef(new RemotePoseTracker());
+  const [pose, setPose] = useState<HeadPose | null>(null);
+  const [estimated, setEstimated] = useState(false);
+  const [status, setStatus] = useState('等待邊緣裝置');
 
   useEffect(() => {
-    const checkCdnAvailability = async () => {
-      setIsCheckingCdn(true);
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    let controller = new AbortController();
+    const poll = async () => {
+      controller = new AbortController();
+      const started = performance.now();
+      const timeout = setTimeout(() => controller.abort(), 1000);
       try {
-        const faceMeshResponse = await fetch(
-          'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js',
-          { method: 'HEAD' }
-        );
-
-        const cameraResponse = await fetch(
-          'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js',
-          { method: 'HEAD' }
-        );
-
-        const drawingResponse = await fetch(
-          'https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js',
-          { method: 'HEAD' }
-        );
-
-        setIsCdnAvailable(faceMeshResponse.ok && cameraResponse.ok && drawingResponse.ok);
-      } catch (error) {
-        console.error('Error checking CDN availability:', error);
-        setIsCdnAvailable(false);
+        const response = await fetch('/api/pose', { cache: 'no-store', signal: controller.signal });
+        if (!response.ok) throw new Error('receiver unavailable');
+        const data = await response.json();
+        if (stopped) return;
+        if (data.pose) {
+          setEstimated(data.pose.scale === 'estimated');
+          const next = tracker.current.update(data.pose, data.age_ms + performance.now() - started);
+          if (next) setPose(next);
+          setStatus(tracker.current.status);
+        } else setStatus('等待邊緣裝置傳送姿態');
+      } catch {
+        if (!stopped) setStatus('連線中斷，視角已凍結；正在重新連線');
       } finally {
-        setIsCheckingCdn(false);
+        clearTimeout(timeout);
+        if (!stopped) timer = setTimeout(poll, 33);
       }
     };
-
-    checkCdnAvailability();
-
-    const intervalId = setInterval(checkCdnAvailability, 60000);
-
-    return () => clearInterval(intervalId);
+    void poll();
+    return () => { stopped = true; clearTimeout(timer); controller.abort(); };
   }, []);
 
-  const handleHeadPoseUpdate = useCallback((rawPose: HeadPose | null) => {
-    setCurrentHeadPose(rawPose);
-  }, []);
-
-  const toggleFullscreen = useCallback(async () => {
-    if (!document.fullscreenElement) {
-      try {
-        await document.documentElement.requestFullscreen();
-        setIsFullscreen(true);
-      } catch (error) {
-        console.error('Error entering fullscreen:', error);
-      }
-    } else {
-      try {
-        await document.exitFullscreen();
-        setIsFullscreen(false);
-      } catch (error) {
-        console.error('Error exiting fullscreen:', error);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, []);
-
-  useEffect(() => {
-    if (!calibrationManager.isCalibrated()) {
-      setShowCalibration(true);
-    }
-  }, []);
-
-  const handleCalibrationComplete = (newCalibration: CalibrationData) => {
-    if (threeViewRef.current) {
-      threeViewRef.current.updateCalibration(newCalibration);
-    }
-  };
-
-  const toggleDebugMode = () => {
-    const newDebugMode = !debugMode;
-    setDebugMode(newDebugMode);
-    if (threeViewRef.current) {
-      threeViewRef.current.setDebugMode(newDebugMode);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-gray-900 flex flex-col relative">
-      <main className="flex-1 relative">
-        {!isCheckingCdn && !isCdnAvailable && (
-          <div className="absolute bottom-56 left-4 right-4 z-30 max-w-2xl mx-auto p-3 bg-yellow-50 text-yellow-800 rounded-md">
-            <p className="text-sm">
-              We're having trouble connecting to the required resources. Please check your internet connection.
-            </p>
-          </div>
-        )}
-
-        <div className="absolute inset-0">
-          <ThreeView
-            headPose={currentHeadPose}
-            ref={threeViewRef}
-          />
-        </div>
-
-        <div ref={setControlsContainer} className="absolute top-4 left-4 z-20" />
-
-        <div className="absolute bottom-4 right-4 z-10 rounded-lg overflow-hidden shadow-2xl border-2 border-white">
-          <div className="w-64 h-48">
-            <FaceMeshView onHeadPoseUpdate={handleHeadPoseUpdate} controlsContainer={controlsContainer} />
-          </div>
-        </div>
-
-        <div className="absolute bottom-4 left-4 z-10 flex flex-col gap-2">
-          <button
-            onClick={toggleFullscreen}
-            className="p-1.5 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded transition-colors backdrop-blur-sm"
-            aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-            title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-          >
-            {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
-          </button>
-
-          <button
-            onClick={() => setShowCalibration(true)}
-            className="p-1.5 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded transition-colors backdrop-blur-sm"
-            aria-label="Calibration settings"
-            title="Calibration settings"
-          >
-            <Settings size={14} />
-          </button>
-
-          <button
-            onClick={toggleDebugMode}
-            className={`p-1.5 ${debugMode ? 'bg-blue-600' : 'bg-black bg-opacity-50'} hover:bg-opacity-70 text-white rounded transition-colors backdrop-blur-sm`}
-            aria-label="Toggle debug mode"
-            title="Toggle debug mode"
-          >
-            <Bug size={14} />
-          </button>
-        </div>
-      </main>
-
-      {showCalibration && (
-        <CalibrationWizard
-          onComplete={handleCalibrationComplete}
-          onSkip={() => setShowCalibration(false)}
-          onClose={() => setShowCalibration(false)}
-        />
-      )}
+  return <main className="h-screen w-screen relative bg-black">
+    <ThreeView headPose={pose} />
+    <div className="absolute bottom-4 left-4 z-20 rounded-lg bg-black/80 p-4 text-white space-y-2">
+      <h1 className="font-bold">GodEyes · 頭戴相機 6DoF</h1>
+      <p role="status">{status}</p>
+      <p className="text-xs text-gray-300">{estimated ? 'Mac／本機瀏覽器渲染 · 未校正示範，請勿用於距離量測' : '邊緣裝置傳送姿態 · 本機渲染場景 · 位移與旋轉 1:1'}</p>
+      <button className="rounded bg-blue-600 px-3 py-2" onClick={() => tracker.current.reset()}>
+        重設位置與正前方
+      </button>
     </div>
-  );
+  </main>;
 }
-
-export default App;

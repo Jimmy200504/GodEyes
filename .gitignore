@@ -28,3 +28,10 @@ dist-ssr
 .env.*
 !.env.example
 .git-history-backup/
+
+__pycache__/
+
+.venv/
+/calibration/
+/camera.json
+/marker-B.png

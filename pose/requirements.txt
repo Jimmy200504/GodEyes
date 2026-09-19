@@ -1,0 +1,3 @@
+# Desktop/venv installation; on ARM prefer BSP/system OpenCV with aruco support.
+numpy>=1.24,<3
+opencv-contrib-python>=4.8,<5
