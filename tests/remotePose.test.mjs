@@ -110,12 +110,14 @@ test('quaternion sign changes and wrap-around use shortest arc', () => {
   close(rotationOf(wrapped).length(), 1);
 });
 
-test('capture gaps reset history and repeated/backward timestamps do not advance it', () => {
+test('capture gaps hold the visible pose and repeated/backward timestamps do not advance it', () => {
   const filter = new AdaptivePoseSmoother();
   filter.update(measuredPose(), 0);
   close(filter.update(measuredPose(1), 0).position.x, 0);
   close(filter.update(measuredPose(1), -.1).position.x, 0);
-  close(filter.update(measuredPose(1), 1).position.x, 1);
+  close(filter.update(measuredPose(1), 1).position.x, 0);
+  const resumed = filter.update(measuredPose(1), 1.05).position.x;
+  assert.ok(resumed > 0 && resumed < 1);
   filter.reset();
   close(filter.update(measuredPose(2), 2).position.x, 2);
 });
@@ -131,7 +133,7 @@ test('filter behavior remains similar across variable camera rates', () => {
   assert.ok(Math.abs(run(17) - run(23)) < .01);
 });
 
-test('tracker toggle and tracking loss clear smoothing without changing origin', () => {
+test('tracker toggle and tracking loss preserve the existing origin', () => {
   const tracker = new RemotePoseTracker(true);
   tracker.update(packet(0), 0);
   const first = tracker.update(packet(1, { capture_monotonic_ns: 50e6, position: [.01, 0, 0] }), 0);
@@ -143,4 +145,40 @@ test('tracker toggle and tracking loss clear smoothing without changing origin',
   close(tracker.update(packet(4, { capture_monotonic_ns: 200e6, position: [.2, 0, 0] }), 0).position.x, .2);
   tracker.reset();
   close(tracker.update(packet(5, { capture_monotonic_ns: 250e6, position: [.2, 0, 0] }), 0).position.x, 0);
+});
+
+
+test('lost packets never reset a nonzero view; reacquisition holds then resumes smoothly', () => {
+  const tracker = new RemotePoseTracker(true);
+  tracker.update(packet(0), 0);
+  let held;
+  for (let i = 1; i <= 10; i++) {
+    held = tracker.update(packet(i, { capture_monotonic_ns: i * 50e6,
+      position: [.3, .1, .2], quaternion_xyzw: [0, Math.sin(.2), 0, Math.cos(.2)] }), 0);
+  }
+  assert.ok(held.position.x > .2);
+  for (let i = 11; i <= 20; i++) {
+    // An invalid packet can carry origin placeholders; none may reach the renderer.
+    assert.equal(tracker.update(packet(i, { capture_monotonic_ns: i * 50e6,
+      tracking: 'lost', position: [0, 0, 0] }), 0), null);
+  }
+  const recovered = tracker.update(packet(21, { capture_monotonic_ns: 1050e6,
+    position: [.5, .2, .3], quaternion_xyzw: [0, Math.sin(.3), 0, Math.cos(.3)] }), 0);
+  assert.deepEqual(recovered.position, held.position);
+  close(rotationOf(recovered).angleTo(rotationOf(held)), 0);
+  const moving = tracker.update(packet(22, { capture_monotonic_ns: 1100e6,
+    position: [.5, .2, .3], quaternion_xyzw: [0, Math.sin(.3), 0, Math.cos(.3)] }), 0);
+  assert.ok(moving.position.x > held.position.x && moving.position.x < .5);
+});
+
+test('stale data or a network hold preserve the filtered view on recovery', () => {
+  for (const pause of ['stale', 'network']) {
+    const tracker = new RemotePoseTracker(true);
+    tracker.update(packet(0), 0);
+    const held = tracker.update(packet(1, { capture_monotonic_ns: 50e6, position: [.3, 0, 0] }), 0);
+    if (pause === 'stale') assert.equal(tracker.update(packet(2), 300), null);
+    else tracker.hold();
+    const recovered = tracker.update(packet(3, { capture_monotonic_ns: 150e6, position: [0, 0, 0] }), 0);
+    assert.deepEqual(recovered.position, held.position);
+  }
 });

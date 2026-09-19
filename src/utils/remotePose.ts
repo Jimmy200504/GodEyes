@@ -32,6 +32,8 @@ export class RemotePoseTracker {
     this.smoother.reset();
   }
 
+  hold(): void { this.smoother.pause(); }
+
   reset(): void {
     this.smoother.reset();
     this.origin = null;
@@ -42,14 +44,14 @@ export class RemotePoseTracker {
 
   update(p: PosePacket, ageMs: number): HeadPose | null {
     if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > 250) {
-      this.smoother.reset();
+      this.hold();
       this.status = '資料過期，視角已凍結'; return null;
     }
     const epoch = JSON.stringify([p.session_id, p.map_id]);
     if (this.epoch && epoch !== this.epoch) this.blocked = true;
     if (this.blocked) { this.status = '地圖或工作階段已變更，請重設原點'; return null; }
     if (p.tracking !== 'tracking') {
-      this.smoother.reset();
+      this.hold();
       const reasons: Record<string, string> = {
         calibration_required: '相機已連線，需校正或啟用粗估示範',
         resolution_mismatch: '相機解析度與校正不符，視角已凍結',
@@ -60,7 +62,7 @@ export class RemotePoseTracker {
       this.status = reasons[p.tracking_reason ?? ''] ?? `追蹤狀態：${p.tracking}`;
       return null;
     }
-    if (p.scale !== 'metric' && p.scale !== 'estimated') { this.status = '尚未校正公尺尺度，視角已凍結'; return null; }
+    if (p.scale !== 'metric' && p.scale !== 'estimated') { this.hold(); this.status = '尚未校正公尺尺度，視角已凍結'; return null; }
     if (p.seq <= this.lastSeq) return null;
     this.epoch = epoch;
     this.lastSeq = p.seq;
@@ -88,6 +90,7 @@ export class RemotePoseTracker {
  */
 export class AdaptivePoseSmoother {
   private time: number | null = null;
+  private paused = false;
   private rawPosition = new Vector3();
   private rawRotation = new Quaternion();
   private position = new Vector3();
@@ -95,7 +98,10 @@ export class AdaptivePoseSmoother {
   private velocity = new Vector3();
   private angularVelocity = new Vector3();
 
-  reset(): void { this.time = null; }
+  reset(): void { this.time = null; this.paused = false; }
+
+  /** Keep the visible pose; the first reacquired sample restarts only timing/derivatives. */
+  pause(): void { this.paused = true; }
 
   update(pose: HeadPose, time: number): HeadPose {
     if (!pose.position || !pose.orientation || !Number.isFinite(time)) return pose;
@@ -103,9 +109,14 @@ export class AdaptivePoseSmoother {
     const rawRotation = new Quaternion(pose.orientation.x, pose.orientation.y,
       pose.orientation.z, pose.orientation.w).normalize();
     const dt = this.time === null ? 0 : time - this.time;
-    if (this.time === null || dt > 0.25) {
+    if (this.time === null) {
       this.position.copy(rawPosition);
       this.rotation.copy(rawRotation);
+      this.velocity.set(0, 0, 0);
+      this.angularVelocity.set(0, 0, 0);
+    } else if (dt > 0 && (this.paused || dt > 0.25)) {
+      // A tracking gap is not a recenter. Freeze this recovery frame at the last
+      // displayed pose, then ease toward subsequent valid samples normally.
       this.velocity.set(0, 0, 0);
       this.angularVelocity.set(0, 0, 0);
     } else if (dt > 0) {
@@ -125,6 +136,7 @@ export class AdaptivePoseSmoother {
       this.rotation.slerp(rawRotation, alpha(2 + 0.5 * this.angularVelocity.length())).normalize();
     }
     if (this.time === null || dt > 0) {
+      this.paused = false;
       this.time = time;
       this.rawPosition.copy(rawPosition);
       this.rawRotation.copy(rawRotation);

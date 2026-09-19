@@ -28,9 +28,15 @@ export default function App() {
           const next = tracker.current.update(data.pose, data.age_ms + performance.now() - started);
           if (next) setPose(next);
           setStatus(tracker.current.status);
-        } else setStatus('等待邊緣裝置傳送姿態');
+        } else {
+          tracker.current.hold();
+          setStatus('等待邊緣裝置傳送姿態，保留最後視角');
+        }
       } catch {
-        if (!stopped) setStatus('連線中斷，視角已凍結；正在重新連線');
+        if (!stopped) {
+          tracker.current.hold();
+          setStatus('連線中斷，視角已凍結；正在重新連線');
+        }
       } finally {
         clearTimeout(timeout);
         if (!stopped) timer = setTimeout(poll, 33);

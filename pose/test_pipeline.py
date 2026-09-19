@@ -34,6 +34,8 @@ class PipelineTests(unittest.TestCase):
         self.assertLess(error,.1)
         lost,_ = pipeline.update([],None,(640,480),time.monotonic())
         self.assertEqual(lost['tracking'],'lost')
+        self.assertEqual(lost['position'],packet['position'])
+        self.assertEqual(lost['quaternion_xyzw'],packet['quaternion_xyzw'])
         self.assertGreater(lost['seq'],packet['seq'])
 
     def test_calibrated_mode_and_resolution_mismatch(self):
