@@ -7,6 +7,8 @@ interface ThreeViewProps {
   headPose: HeadPose | null;
   onGestureStatus?: (status: string) => void;
   renderSmoothing?: boolean;
+  posePrediction?: boolean;
+  allowCoast?: boolean;
   poseEpoch?: number;
 }
 
@@ -21,7 +23,7 @@ export interface ThreeViewHandle {
   getModelRotation: () => { x: number; y: number; z: number };
 }
 
-const ThreeView = forwardRef<ThreeViewHandle, ThreeViewProps>(({ headPose, onGestureStatus, renderSmoothing = true, poseEpoch = 0 }, ref) => {
+const ThreeView = forwardRef<ThreeViewHandle, ThreeViewProps>(({ headPose, onGestureStatus, renderSmoothing = true, posePrediction = false, allowCoast = false, poseEpoch = 0 }, ref) => {
   const gestureStatusRef = useRef(onGestureStatus);
   gestureStatusRef.current = onGestureStatus;
   const containerRef = useRef<HTMLDivElement>(null);
@@ -58,13 +60,15 @@ const ThreeView = forwardRef<ThreeViewHandle, ThreeViewProps>(({ headPose, onGes
   }, []);
 
   useEffect(() => { sceneManagerRef.current?.resetHeadPose(); }, [poseEpoch]);
+  useEffect(() => { sceneManagerRef.current?.setPosePrediction(posePrediction); }, [posePrediction]);
   useEffect(() => { sceneManagerRef.current?.setRenderSmoothing(renderSmoothing); }, [renderSmoothing]);
 
   useEffect(() => {
     if (headPose && sceneManagerRef.current) {
       sceneManagerRef.current.updateHeadPose(headPose);
-    } else { sceneManagerRef.current?.holdHeadPose(); }
-  }, [headPose]);
+    } else if (allowCoast) { sceneManagerRef.current?.coastHeadPose(); }
+    else { sceneManagerRef.current?.holdHeadPose(); }
+  }, [headPose, allowCoast, posePrediction]);
 
   useImperativeHandle(ref, () => ({
     updateCalibration: (calibration: CalibrationData) => {
@@ -117,7 +121,7 @@ const ThreeView = forwardRef<ThreeViewHandle, ThreeViewProps>(({ headPose, onGes
       <div
         ref={containerRef}
         tabIndex={0}
-        aria-label="3D 場景，頭部追蹤與手勢移動旋轉"
+        aria-label="3D 場景，SLAM 頭部追蹤與手勢移動旋轉"
         onPointerDown={() => containerRef.current?.focus({ preventScroll: true })}
         className="w-full h-full outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400"
         style={{ touchAction: 'none' }}

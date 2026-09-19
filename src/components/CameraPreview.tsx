@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 
 interface CameraStatus {
   ids: number[];
+  map_points?: number;
+  inliers?: number;
   fps: number;
   age_ms: number | null;
   error: string | null;
@@ -67,22 +69,18 @@ export default function CameraPreview() {
 
   const fresh = status?.age_ms != null && status.age_ms < 1000 && !status.error && !offline;
   const tracking = fresh && status?.pose_tracking === 'tracking';
-  const targets = status?.target_ids ?? [0];
-  const used = tracking ? status?.used_ids ?? [0] : [];
-  const reason = !fresh ? '影像連線中斷／等待更新' : tracking ? '定位中' :
-    status?.pose_reason === 'pose_quality_rejected' ? '已看到標記，姿態品質不足' :
-    status?.pose_reason === 'marker_too_small' ? '標記太小，請靠近' :
-    status?.ids.length ? '看到其他 ID，目前無法定位' : '未看到標記，視角保持不動';
+  const reason = !fresh ? '影像連線中斷／等待更新' : tracking ? '自然特徵定位中' :
+    status?.pose_tracking === 'initializing' ? '請朝有紋理的環境緩慢側移，建立地圖' : '追蹤中斷：轉回已建圖區域，或重建地圖';
 
   return <aside className="absolute bottom-4 right-4 z-30 w-80 max-w-[44vw] overflow-hidden rounded-lg border border-white/20 bg-black/85 text-white shadow-xl">
     <div className="flex justify-between px-3 py-2 text-xs">
       <span>相機即時預覽</span><span>{status?.fps?.toFixed(1) ?? '—'} FPS（處理）</span>
     </div>
-    <img ref={image} alt="Logitech 相機即時畫面與 ArUco 框" className="aspect-[4/3] w-full bg-black object-contain" />
+    <img ref={image} alt="Logitech 相機即時畫面與自然特徵" className="aspect-[4/3] w-full bg-black object-contain" />
     <div className="space-y-1 px-3 py-2 text-xs" role="status">
       <p className={tracking ? 'text-green-300' : 'text-amber-300'}>{reason}</p>
-      <p>看到 ID：{status?.ids.join('、') || '無'} · 參與定位：{used.join('、') || '無'}</p>
-      <p className="text-gray-400">定位目標：{targets.join('、')} · {targets.length === 1 ? '單標記模式' : '多標記模式'}</p>
+      <p>地圖點：{status?.map_points ?? 0} · 定位內點：{status?.inliers ?? 0}</p>
+      <button className="text-blue-300" onClick={async () => { try { const response = await fetch('/api/camera/reset', { method: 'POST' }); if (!response.ok) throw Error('reset failed'); } catch { setOffline(true); } }}>重建地圖</button>
     </div>
   </aside>;
 }

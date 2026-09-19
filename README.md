@@ -1,14 +1,14 @@
+自製 OpenCV＋LK 版新增持續 lost 自動重建、局部地圖搜尋及按觀察品質保留地圖點；更新與限制見 [SLAM.md](SLAM.md)。
+
+> 電腦端 SLAM 實驗：i.MX93 傳影像，Mac／本機運算，啟動與限制見 [SLAM.md](SLAM.md)。下方保留原專案說明。
+
 # GodEyes · 頭戴相機姿態傳輸版
 
 本 worktree 已加入 **NPU 手勢移動與旋轉**：張掌控制前後左右、食指控制左右轉向／上下看、握拳停止。板子與電腦的啟動方式見 [手勢控制指南](npu/GESTURE_CONTROL.md)。
 
-此分支由 `main` 的 `2baad2b` 建立，方向是 **頭戴朝外相機 → 邊緣裝置估計 6DoF → 傳送 pose → 另一台電腦渲染 3D**。邊緣裝置不 host 網站、不渲染場景。
+目前以 `origin/imx-head-pose-local-slam`（`3e3d076`）為 SLAM 基礎。**頭戴朝外相機 → 板端彩色影格與手勢 NPU → Mac 無標記 SLAM → 瀏覽器疊加手勢移動／旋轉**，不需要 ArUco。SLAM 是自製 sparse 實驗後端，使用任意尺度；原分支的其他後端與實驗開關保留。
 
-目前已實作 **單一固定 ArUco B → PnP → 公尺尺度 pose API → 外部電腦渲染**，包括 webcam 擷取、標記產生與相機校正工具。使用 Logitech webcam 頭戴朝外、沒有 IMU；不需要 A 或 SLAM，尚未做真機精度／效能驗證，姿態解算不使用 NPU；本 worktree 另以 NPU 執行手勢模型。板子背景沿用舊 worktree 的 FRDM-i.MX93 記錄。
-
-目前執行中的相機預覽已整合 PnP 與 API 傳送，使用 `--approximate` 的未校正示範模式；以真實 B 角點估姿態，但距離與角度尚未精確校正。API 會標為 `estimated`，前端亦明確標示。
-
-先看 [簡短 plan](pose/PLAN.md) 和 [真實相機啟動指南](pose/README.md)。下方 mock 只用於傳輸／渲染測試。
+整合版啟動請看 [SLAM ＋手勢控制指南](npu/GESTURE_CONTROL.md)。下方為原 Tag 原型的歷史說明，並非目前預設啟動流程。
 
 ## 啟動原型
 

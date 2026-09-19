@@ -198,3 +198,47 @@ test('alternating tracking and loss still advances toward valid measurements', (
   }
   assert.ok(previous > .18);
 });
+
+test('SLAM opt-in permits arbitrary scale and preserves basis/recenter rules', () => {
+  const tracker = new RemotePoseTracker(false, true);
+  assert.ok(tracker.update(packet(0, { scale: 'arbitrary' }), 0));
+  const moved = tracker.update(packet(1, { scale: 'arbitrary', position: [1, 2, 3] }), 0);
+  assert.deepEqual(moved.position, { x: 1, y: -2, z: -3 });
+  assert.match(tracker.status, /任意尺度/);
+  assert.equal(tracker.update(packet(2, { scale: 'arbitrary', map_id: 'new-map' }), 0), null);
+});
+
+test('authorized timeout rebuild rebases the new map onto the last view',()=>{
+ const tracker=new RemotePoseTracker(false,true,true);
+ const old={source:'cpu-sparse-vo-local',session_id:'old',map_id:'sparse-old',scale:'arbitrary'};
+ tracker.update(packet(1,old),0);
+ const yaw=new Quaternion().setFromAxisAngle(new Vector3(0,1,0),.3);
+ const last=tracker.update(packet(2,{...old,position:[1,2,3],quaternion_xyzw:yaw.toArray()}),0);
+ const fresh={...old,session_id:'new',map_id:'sparse-new',previous_session_id:'old',reset_reason:'lost_timeout'};
+ assert.equal(tracker.update(packet(1,{...fresh,tracking:'initializing'}),0),null);
+ assert.match(tracker.status,/自動重建/);
+ const q=new Quaternion().setFromAxisAngle(new Vector3(0,1,0),-.8);
+ const first=tracker.update(packet(2,{...fresh,position:[10,20,30],quaternion_xyzw:q.toArray()}),0);
+ for(const k of ['x','y','z']) close(first.position[k],last.position[k]);
+ assert.ok(rotationOf(first).angleTo(rotationOf(last))<1e-6);
+ const next=tracker.update(packet(3,{...fresh,position:[11,20,30],quaternion_xyzw:q.toArray()}),0);
+ assert.ok(Math.hypot(next.position.x-first.position.x,next.position.z-first.position.z)>.99);
+ tracker.reset();
+ const centered=tracker.update(packet(4,{...fresh,position:[11,20,30]}),0);
+ close(centered.position.x,0);close(centered.position.z,0);
+});
+test('timeout rebase requires matching predecessor and rejects stale or unrelated epochs',()=>{
+ for(const changes of [{previous_session_id:'wrong'},{reset_reason:'manual'},{source:'mock'},{map_id:'unexpected'}]){
+  const tracker=new RemotePoseTracker(false,true,true);
+  const old={source:'cpu-sparse-vo-local',session_id:'old',map_id:'sparse-old',scale:'arbitrary'};
+  tracker.update(packet(1,old),0);
+  const fresh={...old,session_id:'new',map_id:'sparse-new',previous_session_id:'old',reset_reason:'lost_timeout',...changes};
+  assert.equal(tracker.update(packet(1,fresh),0),null);
+  assert.match(tracker.status,/請重設原點/);
+ }
+ const tracker=new RemotePoseTracker(false,true,true);
+ const old={source:'cpu-sparse-vo-local',session_id:'old',map_id:'sparse-old',scale:'arbitrary'};
+ tracker.update(packet(1,old),0);
+ assert.equal(tracker.update(packet(1,{...old,session_id:'new',map_id:'sparse-new',previous_session_id:'old',reset_reason:'lost_timeout'}),251),null);
+ assert.ok(tracker.update(packet(2,old),0));
+});
