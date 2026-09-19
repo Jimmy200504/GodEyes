@@ -2,6 +2,7 @@ import itertools
 from pathlib import Path
 import time
 import unittest
+from unittest.mock import patch
 import cv2
 import numpy as np
 from aruco_pose import quaternion_xyzw
@@ -59,7 +60,11 @@ class BoardTests(unittest.TestCase):
                 result,used,reason = estimate_board(corners,ids,self.board,self.k,self.dist)
                 self.assertIsNone(reason)
                 self.assertEqual(used,visible)
-                self.assertGreater(result['reprojection_error_px'],2)
+                if len(visible) == 1:
+                    self.assertGreater(result['reprojection_error_px'],2)
+                else:
+                    self.assertLess(result['reprojection_error_px'],1e-5)
+                    np.testing.assert_allclose(result['position'],-self.rotation.T @ self.tvec,atol=1e-6)
                 self.assertTrue(np.isfinite(result['position']).all())
                 pipeline = PosePipeline(marker_m=.053,approximate=True,board_path=BOARD)
                 packet,_ = pipeline.update(corners,ids,(640,480),time.monotonic())
@@ -67,6 +72,24 @@ class BoardTests(unittest.TestCase):
                 lost,_ = pipeline.update([],None,(640,480),time.monotonic())
                 self.assertEqual(lost['tracking'],'lost')
                 self.assertEqual(lost['position'],packet['position'])
+
+    def test_ransac_excludes_displaced_tag(self):
+        corners, ids = self.observations([0,1,2,3])
+        corners[0] += [60,25]
+        result,used,reason = estimate_board(corners,ids,self.board,self.k,self.dist)
+        self.assertIsNone(reason)
+        self.assertEqual(used,[1,2,3])
+        np.testing.assert_allclose(result['position'],-self.rotation.T @ self.tvec,atol=1e-6)
+
+    def test_ransac_failure_or_weak_consensus_preserves_fallback(self):
+        corners, ids = self.observations([0,1])
+        for response in ((False,None,None,None),
+                         (True,None,None,np.arange(4).reshape(-1,1))):
+            with patch('marker_board.cv2.solvePnPRansac',return_value=response):
+                result,used,reason = estimate_board(corners,ids,self.board,self.k,self.dist)
+                self.assertIsNone(reason)
+                self.assertEqual(used,[0,1])
+                np.testing.assert_allclose(result['position'],-self.rotation.T @ self.tvec,atol=1e-6)
 
     def test_print_scale_and_duplicate_id_handling(self):
         np.testing.assert_allclose(np.linalg.norm(self.board[0]-np.roll(self.board[0],1,axis=0),axis=1),.053)

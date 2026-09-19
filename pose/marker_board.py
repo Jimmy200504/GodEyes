@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import numpy as np
+import cv2
 from aruco_pose import solve_points
 
 
@@ -42,7 +43,24 @@ def estimate_board(corners, ids, board, k, dist, min_side=20):
         objects.extend(board[marker_id]); pixels.extend(image); used.append(marker_id)
     if not used:
         return None, [], 'marker_too_small' if known else 'marker_missing_or_duplicate'
-    # Keep finite, positive-depth solutions even with a large reprojection residual.
-    # A single visible board ID is enough; residual remains available for diagnostics.
+    objects = np.asarray(objects, np.float64)
+    pixels = np.asarray(pixels, np.float64)
+    # Four corners have no useful redundancy. With multiple tags, prefer a
+    # majority consensus, then use the planar solver on those corners only.
+    if len(used) > 1:
+        try:
+            ok, _, _, inliers = cv2.solvePnPRansac(
+                objects, pixels, k, dist, iterationsCount=100,
+                reprojectionError=3.0, confidence=0.99, flags=cv2.SOLVEPNP_AP3P)
+        except cv2.error:
+            ok, inliers = False, None
+        if ok and inliers is not None:
+            indices = np.unique(inliers.reshape(-1))
+            if len(indices) >= max(6, len(objects) // 2 + 1):
+                pose = solve_points(objects[indices], pixels[indices], k, dist, max_error=3.0)
+                if pose is not None:
+                    accepted = sorted({used[int(i) // 4] for i in indices})
+                    return pose, accepted, None
+    # Preserve the permissive fallback: lack of consensus is not a new lost gate.
     pose = solve_points(objects,pixels,k,dist,max_error=float("inf"))
     return (pose,sorted(used),None) if pose else (None,[],'pose_quality_rejected')

@@ -174,3 +174,9 @@ python3 -m venv --system-site-packages .venv
 本次驗證：Python 21 項、Node 23 項測試通過，Vite build 通過；完整 app TypeScript 檢查仍有既有 `ModelViewer.tsx`／`useFaceLandmarker.ts` 錯誤，本次變更檔未出現新型別錯誤。
 
 依 demo 操作需求，已移除即時 pipeline 的 2 px RMS 淘汰條件；單標記與多標記均接受可求出的有限值、正深度姿態。斜視／模糊時可繼續跟隨，但精度與穩定度可能下降；不是改掉校正時的品質驗證。
+
+### 多標記 RANSAC
+
+兩張以上有效標記時，先用 OpenCV `solvePnPRansac`（AP3P、最多 100 次、3 px 內點門檻、confidence 0.99）篩選角點，再以內點重解平面 IPPE。至少需要 6 個內點且超過全部角點的一半，重解 RMS ≤3 px 才採用；`used_ids` 只列出實際有角點參與解算的標記，RMS 也以參與的內點計算。
+
+只有一張標記、共識不足或 RANSAC 解算失敗時，沿用原本不設 RMS 硬門檻的解法，避免新增追蹤凍結條件；備援仍可能受到錯誤角點影響。這是在單幀內剔除離群角點，與前端姿態濾波／逐畫面插值搭配使用。合成測試涵蓋錯誤角點、整張標記偏移與備援；實機穩定度及額外 CPU 耗時尚待驗證，執行中的相機程序需重啟才載入此修改。
