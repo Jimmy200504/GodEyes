@@ -1,0 +1,245 @@
+{
+  "version": 1,
+  "width": 960,
+  "height": 540,
+  "format": "webp",
+  "frames": [
+    {
+      "yaw": -35,
+      "pitch": -10,
+      "file": "frames/view-000.webp"
+    },
+    {
+      "yaw": -30,
+      "pitch": -10,
+      "file": "frames/view-001.webp"
+    },
+    {
+      "yaw": -25,
+      "pitch": -10,
+      "file": "frames/view-002.webp"
+    },
+    {
+      "yaw": -20,
+      "pitch": -10,
+      "file": "frames/view-003.webp"
+    },
+    {
+      "yaw": -15,
+      "pitch": -10,
+      "file": "frames/view-004.webp"
+    },
+    {
+      "yaw": -10,
+      "pitch": -10,
+      "file": "frames/view-005.webp"
+    },
+    {
+      "yaw": -5,
+      "pitch": -10,
+      "file": "frames/view-006.webp"
+    },
+    {
+      "yaw": 0,
+      "pitch": -10,
+      "file": "frames/view-007.webp"
+    },
+    {
+      "yaw": 5,
+      "pitch": -10,
+      "file": "frames/view-008.webp"
+    },
+    {
+      "yaw": 10,
+      "pitch": -10,
+      "file": "frames/view-009.webp"
+    },
+    {
+      "yaw": 15,
+      "pitch": -10,
+      "file": "frames/view-010.webp"
+    },
+    {
+      "yaw": 20,
+      "pitch": -10,
+      "file": "frames/view-011.webp"
+    },
+    {
+      "yaw": 25,
+      "pitch": -10,
+      "file": "frames/view-012.webp"
+    },
+    {
+      "yaw": 30,
+      "pitch": -10,
+      "file": "frames/view-013.webp"
+    },
+    {
+      "yaw": 35,
+      "pitch": -10,
+      "file": "frames/view-014.webp"
+    },
+    {
+      "yaw": -35,
+      "pitch": 0,
+      "file": "frames/view-015.webp"
+    },
+    {
+      "yaw": -30,
+      "pitch": 0,
+      "file": "frames/view-016.webp"
+    },
+    {
+      "yaw": -25,
+      "pitch": 0,
+      "file": "frames/view-017.webp"
+    },
+    {
+      "yaw": -20,
+      "pitch": 0,
+      "file": "frames/view-018.webp"
+    },
+    {
+      "yaw": -15,
+      "pitch": 0,
+      "file": "frames/view-019.webp"
+    },
+    {
+      "yaw": -10,
+      "pitch": 0,
+      "file": "frames/view-020.webp"
+    },
+    {
+      "yaw": -5,
+      "pitch": 0,
+      "file": "frames/view-021.webp"
+    },
+    {
+      "yaw": 0,
+      "pitch": 0,
+      "file": "frames/view-022.webp"
+    },
+    {
+      "yaw": 5,
+      "pitch": 0,
+      "file": "frames/view-023.webp"
+    },
+    {
+      "yaw": 10,
+      "pitch": 0,
+      "file": "frames/view-024.webp"
+    },
+    {
+      "yaw": 15,
+      "pitch": 0,
+      "file": "frames/view-025.webp"
+    },
+    {
+      "yaw": 20,
+      "pitch": 0,
+      "file": "frames/view-026.webp"
+    },
+    {
+      "yaw": 25,
+      "pitch": 0,
+      "file": "frames/view-027.webp"
+    },
+    {
+      "yaw": 30,
+      "pitch": 0,
+      "file": "frames/view-028.webp"
+    },
+    {
+      "yaw": 35,
+      "pitch": 0,
+      "file": "frames/view-029.webp"
+    },
+    {
+      "yaw": -35,
+      "pitch": 10,
+      "file": "frames/view-030.webp"
+    },
+    {
+      "yaw": -30,
+      "pitch": 10,
+      "file": "frames/view-031.webp"
+    },
+    {
+      "yaw": -25,
+      "pitch": 10,
+      "file": "frames/view-032.webp"
+    },
+    {
+      "yaw": -20,
+      "pitch": 10,
+      "file": "frames/view-033.webp"
+    },
+    {
+      "yaw": -15,
+      "pitch": 10,
+      "file": "frames/view-034.webp"
+    },
+    {
+      "yaw": -10,
+      "pitch": 10,
+      "file": "frames/view-035.webp"
+    },
+    {
+      "yaw": -5,
+      "pitch": 10,
+      "file": "frames/view-036.webp"
+    },
+    {
+      "yaw": 0,
+      "pitch": 10,
+      "file": "frames/view-037.webp"
+    },
+    {
+      "yaw": 5,
+      "pitch": 10,
+      "file": "frames/view-038.webp"
+    },
+    {
+      "yaw": 10,
+      "pitch": 10,
+      "file": "frames/view-039.webp"
+    },
+    {
+      "yaw": 15,
+      "pitch": 10,
+      "file": "frames/view-040.webp"
+    },
+    {
+      "yaw": 20,
+      "pitch": 10,
+      "file": "frames/view-041.webp"
+    },
+    {
+      "yaw": 25,
+      "pitch": 10,
+      "file": "frames/view-042.webp"
+    },
+    {
+      "yaw": 30,
+      "pitch": 10,
+      "file": "frames/view-043.webp"
+    },
+    {
+      "yaw": 35,
+      "pitch": 10,
+      "file": "frames/view-044.webp"
+    }
+  ],
+  "camera": {
+    "position": [
+      0,
+      0,
+      0.6
+    ],
+    "fov": 75,
+    "rotationOrder": "YXZ"
+  },
+  "source": "lofi-world.spz",
+  "totalBytes": 4426637,
+  "exportSeconds": 11
+}

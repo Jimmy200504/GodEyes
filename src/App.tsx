@@ -134,7 +134,7 @@ function App(): JSX.Element {
         <header className="explore-header">
           <button
             className="glass icon-button"
-            aria-label="返回世界資料庫"
+            aria-label="返回現場資料庫"
             onClick={() => navigate({ kind: "library" })}
           >
             <ArrowLeft size={20} />
@@ -332,17 +332,17 @@ function App(): JSX.Element {
     if (page.kind !== "library") {
       return (
         <main className="page-width missing-state">
-          <h1>{!loaded ? "正在讀取世界…" : "暫時找不到這個世界"}</h1>
+          <h1>{!loaded ? "正在讀取現場…" : "找不到這個現場"}</h1>
           <p>
             {online
-              ? "返回資料庫選擇已完成的場景。"
-              : "請啟動本機服務以讀取已建立的世界。"}
+              ? "返回資料庫，選擇已完成的現場。"
+              : "請啟動本機服務以讀取已建立的現場。"}
           </p>
           <button
             className="primary"
             onClick={() => navigate({ kind: "library" })}
           >
-            返回世界資料庫
+            返回現場資料庫
           </button>
         </main>
       );
@@ -364,20 +364,15 @@ function App(): JSX.Element {
     <div className="app-shell">
       <header className="main-header">
         <button className="brand" onClick={() => navigate({ kind: "library" })}>
-          <span className="brand-icon">
-            <Eye size={24} />
-          </span>
-          <span>
-            GOD<span className="brand-light">EYES</span>
-            <small>SPATIAL RECONSTRUCTION</small>
-          </span>
+          <span>GODEYES</span>
+          <small>SCENE RECONSTRUCTION</small>
         </button>
         <nav>
           <button
             className={page.kind === "library" ? "nav-active" : ""}
             onClick={() => navigate({ kind: "library" })}
           >
-            世界資料庫
+            現場資料庫
           </button>
           <button
             className={page.kind === "builder" ? "nav-active" : ""}
@@ -388,7 +383,7 @@ function App(): JSX.Element {
         </nav>
         <div className="service-status">
           <span className={`status-dot ${online ? "" : "offline"}`} />
-          {online ? "本機工作台已連線" : "本機場景可探索"}
+          {online ? "LOCAL · ONLINE" : "LOCAL · PRESETS ONLY"}
         </div>
       </header>
       {renderPage()}

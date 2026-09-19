@@ -1,6 +1,10 @@
-import { ArrowRight, Box, Eye, Layers3, Plus } from "lucide-react";
+import { Fragment, lazy, Suspense } from "react";
 import { isSceneActive, STATUS_LABELS } from "../utils/worldScenes";
 import type { WorldScene } from "../utils/worldScenes";
+import SplatWordmark from "./SplatWordmark";
+import DitherRamp from "./DitherRamp";
+
+const OrbitScrub = lazy(() => import("./OrbitScrub"));
 
 interface WorldLibraryProps {
   scenes: WorldScene[];
@@ -8,168 +12,206 @@ interface WorldLibraryProps {
   onOpen: (scene: WorldScene) => void;
 }
 
-function getSceneCaption(id: string): string {
-  switch (id) {
-    case "bright-truvia":
-      return "EXTERIOR / 街道空間";
-    case "shared-scene-v2":
-      return "INTERIOR / 室內空間";
-    default:
-      return "YOUR SCENE / 你的現場";
-  }
+interface PlateMeta {
+  kind: string;
+  note: string;
 }
+
+const PLATE_META: Record<string, PlateMeta> = {
+  "bright-truvia": { kind: "EXTERIOR", note: "街道、建物立面、陰天散射光。" },
+  "shared-scene-v2": { kind: "INTERIOR", note: "室內、遺體位置、日光燈。" },
+};
+
+function plateMeta(id: string): PlateMeta {
+  return PLATE_META[id] ?? { kind: "SUBMITTED", note: "由你上傳的現場照片重建。" };
+}
+
+const FLOW = [
+  ["01", "CAPTURE", "現場照片"],
+  ["02", "CLEAN", "影像整理"],
+  ["03", "PROMPT", "英文描述"],
+  ["04", "SOLVE", "空間重建"],
+  ["05", "ENTER", "走進現場"],
+];
 
 export default function WorldLibrary({
   scenes,
   onCreate,
   onOpen,
 }: WorldLibraryProps): JSX.Element {
+  const ready = scenes.filter((scene) => scene.status === "ready");
   const activeCount = scenes.filter(
     (scene) => scene.source === "generated" && isSceneActive(scene.status),
   ).length;
+  const firstReady = ready[0];
+
   return (
-    <main className="page-width library">
-      <section className="hero">
-        <div className="hero-copy">
-          <span className="eyebrow">
-            <span className="small-line" />
-            BEYOND THE FRAME
-          </span>
-          <h1>
-            不只看見現場。
-            <br />
-            <em>走進現場。</em>
-          </h1>
-          <p>
-            從一張照片，延伸出可以親自探索的空間。
-            <br />
-            換個角度，讓每一個細節重新被看見。
-          </p>
-          <button className="primary" onClick={onCreate}>
-            <Plus size={18} />
-            建立你的世界
-            <ArrowRight size={17} />
-          </button>
-          <div className="hero-meta">
-            <span>01 上傳照片</span>
-            <i />
-            <span>02 整理影像</span>
-            <i />
-            <span>03 探索世界</span>
-          </div>
+    <main className="page">
+      {/* 01 — hero */}
+      <section className="band hero">
+        <div className="hero-top">
+          <span className="tag">01</span>
+          <span className="tag-text">現場重建 · SCENE RECONSTRUCTION</span>
         </div>
-        <div className="hero-art" aria-hidden="true">
-          <div className="orbit orbit-one" />
-          <div className="orbit orbit-two" />
-          <div className="orbital-cross horizontal" />
-          <div className="orbital-cross vertical" />
-          <div className="scene-plane plane-back" />
-          <div className="scene-plane plane-front">
-            <img src="/scenes/previews/bright-truvia.webp" alt="" />
-            <div className="plane-grid" />
-            <span className="corner top-left" />
-            <span className="corner bottom-right" />
-          </div>
-          <span className="art-label label-one">
-            2D INPUT <span>→</span> 3D WORLD
-          </span>
-          <span className="art-label label-two">
-            <Box size={13} />
-            空間，從此展開。
-          </span>
-          <span className="coordinate">
-            PHOTO REFERENCE / SPATIAL DEPTH
-            <br />
-            PERSPECTIVE · UNLOCKED
-          </span>
-        </div>
-      </section>
-      <section className="worlds-section">
-        <div className="section-heading">
-          <div>
-            <span className="eyebrow">YOUR WORLD LIBRARY</span>
+
+        <SplatWordmark />
+
+        <div className="hero-body">
+          <div className="panel panel-ox hero-claim">
             <h2>
-              選一個世界，開始探索{" "}
-              <span>{scenes.length.toString().padStart(2, "0")}</span>
+              照片只留下一個視角。
+              <span>現場有無數個。</span>
             </h2>
+            <p>
+              GodEyes 把現場照片重建成 3D Gaussian Splat
+              空間。戴上裝置走進去，轉頭、前後左右移動，還原當時站在那裡會看見的東西。
+            </p>
+            <ol className="flow">
+              {FLOW.map(([n, en, zh], i) => (
+                <Fragment key={n}>
+                  {i > 0 && (
+                    <span className="flow-arrow" aria-hidden="true">
+                      →
+                    </span>
+                  )}
+                  <li>
+                    <b>{n}</b>
+                    {zh}
+                    <span aria-hidden="true">{en}</span>
+                  </li>
+                </Fragment>
+              ))}
+            </ol>
+
+            <div className="hero-actions">
+              {firstReady && (
+                <button
+                  className="keycap keycap-lg"
+                  onClick={() => onOpen(firstReady)}
+                >
+                  直接進入現場 <b>1</b>
+                </button>
+              )}
+              <button className="keycap keycap-lg" onClick={onCreate}>
+                重建你的現場 <b>N</b>
+              </button>
+            </div>
           </div>
-          <div className="library-note">
-            <span className="status-dot" />
-            {activeCount
-              ? `${activeCount} 個世界正在背景建立`
-              : "預建世界已就緒，無須等待生成"}
+
+          <div className="hero-side">
+            <DitherRamp />
+            <div className="chip">
+              <span className="chip-head">
+                <b className="chip-key">!</b> 現場不是證據
+              </span>
+              <span>
+                重建是衍生視覺化。幾何不保證精確、沒有碰撞物理、不做任何推論。判讀一律回到原始照片。
+              </span>
+            </div>
+            <div className="terminal">
+              <span className="terminal-bar">
+                <i />
+                <i />
+                <i />
+              </span>
+              <pre>
+{`$ godeyes status
+scenes   ${String(scenes.length).padStart(2, "0")} ready
+method   3d gaussian splatting
+input    codex clean image
+solver   world labs marble
+render   webgl2 · spark
+control  head pose + translation`}
+              </pre>
+            </div>
           </div>
         </div>
-        <div className="world-grid">
-          {scenes.map((scene, index) => (
-            <button
-              className="world-card"
-              key={scene.id}
-              onClick={() => onOpen(scene)}
-            >
-              <div className="card-image">
-                <img
-                  src={scene.thumbnail}
-                  alt={scene.name}
-                  loading={index < 2 ? "eager" : "lazy"}
-                />
-                <div className="card-shade" />
-                <span className="card-number">
-                  WORLD / {String(index + 1).padStart(2, "0")}
+      </section>
+
+      {/* 02 — orbit */}
+      <Suspense
+        fallback={
+          <div className="orbit-placeholder" role="status">
+            正在準備預算視角…
+          </div>
+        }
+      >
+        <OrbitScrub />
+      </Suspense>
+
+      {/* 03 — the demo cases */}
+      <section className="band" id="library">
+        <div className="band-head">
+          <span className="tag">03</span>
+          <h2>走進現場</h2>
+          <span className="band-note">
+            {activeCount
+              ? `${activeCount} 個現場正在背景重建`
+              : "兩個預建現場已就緒，不需要 API key，不需要等待生成"}
+          </span>
+        </div>
+
+        <div className="plates">
+          {scenes.map((scene, index) => {
+            const meta = plateMeta(scene.id);
+            const isReady = scene.status === "ready";
+            return (
+              <button
+                className="plate"
+                key={scene.id}
+                onClick={() => onOpen(scene)}
+              >
+                <span className="plate-img">
+                  <img
+                    src={scene.thumbnail}
+                    alt={`${scene.name} 的重建預覽`}
+                    loading={index < 2 ? "eager" : "lazy"}
+                  />
                 </span>
-                <span
-                  className={`card-status ${scene.status === "error" ? "error" : ""}`}
-                >
-                  <span className="status-dot" />
-                  {scene.source === "preset"
-                    ? "預先生成"
-                    : STATUS_LABELS[scene.status]}
+                <span className="plate-meta">
+                  <span className="tag">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <span className="plate-kind">{meta.kind}</span>
+                  <span className="plate-status">
+                    {scene.source === "preset"
+                      ? "預建"
+                      : STATUS_LABELS[scene.status]}
+                  </span>
                 </span>
-                <span className="enter-circle">
-                  <ArrowRight size={22} />
-                </span>
-                <span className="image-caption">
-                  {getSceneCaption(scene.id)}
-                </span>
-              </div>
-              <div className="card-info">
-                <div>
-                  <h3>{scene.name}</h3>
-                  <p>
+                <span className="plate-body">
+                  <strong>{scene.name}</strong>
+                  <span>
                     {scene.description ||
-                      (scene.status === "ready"
-                        ? "從照片重建的空間，已準備好探索。"
-                        : STATUS_LABELS[scene.status])}
-                  </p>
-                </div>
-                <span className="card-type">
-                  <Layers3 size={14} />
-                  {scene.status === "ready" ? "3D WORLD" : "IN PROGRESS"}
+                      (isReady ? meta.note : STATUS_LABELS[scene.status])}
+                  </span>
                 </span>
-              </div>
-            </button>
-          ))}
-          <button className="new-world-card" onClick={onCreate}>
-            <span className="new-icon">
-              <Plus size={26} />
+                <span className="plate-go">
+                  {isReady ? "進入現場" : "檢視進度"} <b>→</b>
+                </span>
+              </button>
+            );
+          })}
+
+          <button className="plate plate-add" onClick={onCreate}>
+            <span className="plate-add-mark">+</span>
+            <span className="plate-body">
+              <strong>重建你的現場</strong>
+              <span>
+                上傳同一現場的 1–4 張照片。Codex 產出 Clean Image 與 Prompt，
+                Marble 生成世界。
+              </span>
             </span>
-            <h3>下一個世界，由你建立。</h3>
-            <p>上傳現場照片，讓空間不再受限於畫框。</p>
-            <span className="text-button">
-              開始建立
-              <ArrowRight size={16} />
+            <span className="plate-go">
+              開始 <b>→</b>
             </span>
           </button>
         </div>
       </section>
-      <footer className="page-footer">
-        <span>
-          <Eye size={15} />
-          GODEYES <span>讓視角，超越照片。</span>
-        </span>
-        <span>
-          IMAGE BY CODEX <i /> WORLD BY MARBLE
-        </span>
+
+      <footer className="page-foot">
+        <span>GODEYES · 走進現場</span>
+        <span>IMAGE BY CODEX · WORLD BY MARBLE · RENDER BY SPARK</span>
       </footer>
     </main>
   );
