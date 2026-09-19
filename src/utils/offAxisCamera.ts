@@ -15,6 +15,7 @@ export class OffAxisCamera {
   private screenHeightWorld: number;
   private nearPlane: number = 0.05;
   private farPlane: number = 1000;
+  private headAngles = new THREE.Euler(0, 0, 0, 'YXZ');
 
   constructor(camera: THREE.PerspectiveCamera, calibration: CalibrationData) {
     this.camera = camera;
@@ -95,9 +96,16 @@ export class OffAxisCamera {
     if (headPose.orientation) {
       // Angular tracking uses a centered lens: translation-based frustum shifts
       // would otherwise add a second, unrelated movement to the measured angle.
-      this.camera.position.set(0, 0, this.calibration.viewingDistanceCm * 0.01);
+      const height = headPose.heightOffset ?? 0;
+      this.camera.position.set(0, Number.isFinite(height) ? height : 0, this.calibration.viewingDistanceCm * 0.01);
       const { x, y, z, w } = headPose.orientation;
       this.camera.quaternion.set(x, y, z, w).normalize();
+      // Separate horizontal yaw from vertical pitch before applying sensitivity.
+      this.headAngles.setFromQuaternion(this.camera.quaternion, 'YXZ');
+      this.headAngles.x *= 2;
+      this.headAngles.y *= 4;
+      this.headAngles.z *= 4;
+      this.camera.quaternion.setFromEuler(this.headAngles);
       this.camera.updateProjectionMatrix();
       return;
     }
