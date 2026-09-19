@@ -1,5 +1,7 @@
 # 單一 ArUco B：實機啟動
 
+MacBook 解算實驗版：板子只透過 WebSocket 傳影格，Mac 執行 ArUco／RANSAC 與網頁。啟動方式、SSH tunnel、耗時指標與切回原版請見 [MAC_FRAME_POSE.md](MAC_FRAME_POSE.md)。
+
 本版使用 CPU 偵測標記與 PnP；相機綁頭朝螢幕，B 固定在螢幕旁。不需要 A／IMU／SLAM／NPU。請先閱讀 [簡短 plan](PLAN.md)。軟體包含真實 webcam 擷取與傳送，但已通過合成資料測試與板端相機讀取測試；ArUco 實機追蹤和校正精度仍待驗證。
 
 ## 目前已確認的裝置
