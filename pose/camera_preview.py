@@ -15,7 +15,7 @@ PAGE = """<!doctype html><html lang="zh-Hant"><meta charset="utf-8">
 <style>body{background:#111827;color:white;font:17px system-ui;margin:24px auto;padding:0 16px;max-width:900px}img{width:100%;max-width:800px;border-radius:12px;background:black}p{line-height:1.7}a{color:#93c5fd}#status{font-size:22px;margin:16px 0}button{padding:10px}</style>
 <h1>GodEyes · 相機即時預覽</h1><div id="status" role="status">正在連線…</div>
 <img id="camera" alt="Logitech C270 即時影像"><p id="details"></p><p id="pose-status" role="status"></p>
-<p>把手機的 B 放進畫面，保留完整白邊；辨識後出現綠框與 ID 0。<br>黑色正方形邊長 5.5 cm；手機位置與顯示大小需固定。預覽和姿態傳送使用同一批影格。</p>
+<p>把手機的 B 放進畫面，保留完整白邊；辨識後出現綠框與 ID 0。<br>黑色正方形邊長 5.5 cm；手機位置與顯示大小需固定。預覽和姿態傳送使用同一批影格；3D 網頁可開關姿態防抖，本頁保留原始影像晃動。</p>
 <button id="full">放大畫面</button> <a id="render" target="_blank" rel="noopener">開啟 3D 場景</a>
 <script>
 const im=document.getElementById('camera'),st=document.getElementById('status');
@@ -23,7 +23,7 @@ document.getElementById('render').href=location.protocol+'//'+location.hostname+
 document.getElementById('full').onclick=()=>im.requestFullscreen?.();
 async function frame(){try{const r=await fetch('/frame.jpg',{cache:'no-store',signal:AbortSignal.timeout(2000)});
 if(!r.ok)throw Error();const u=URL.createObjectURL(await r.blob()),old=im.src;im.src=u;
-if(old.startsWith('blob:'))URL.revokeObjectURL(old);}catch{st.textContent='鏡頭畫面暫時無法取得';}setTimeout(frame,100);}
+if(old.startsWith('blob:'))URL.revokeObjectURL(old);}catch{st.textContent='鏡頭畫面暫時無法取得';}setTimeout(frame,33);}
 async function status(){try{const r=await fetch('/status',{cache:'no-store',signal:AbortSignal.timeout(2000)}),s=await r.json();
 const fresh=s.age_ms!==null&&s.age_ms<1000;
 st.textContent=s.error?'相機錯誤：'+s.error:!fresh?'等待新影格…':s.found?'已偵測到 B（ID 0）':'尚未偵測到 B，請調整相機／手機方向';
@@ -61,8 +61,9 @@ class Camera:
             cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
             cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-            detector = cv2.aruco.ArucoDetector(cv2.aruco.getPredefinedDictionary(DICTIONARY),
-                                             cv2.aruco.DetectorParameters())
+            params = cv2.aruco.DetectorParameters()
+            params.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
+            detector = cv2.aruco.ArucoDetector(cv2.aruco.getPredefinedDictionary(DICTIONARY), params)
             previous = time.monotonic()
             fps = 0
             while not self.stop.is_set():

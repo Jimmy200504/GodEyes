@@ -112,3 +112,11 @@ python3 -m unittest discover -s pose -p 'test_*.py'
 粗估模式假設 fx=fy=影像寬度、主點在中心、畸變為零；這不是 C270 的實測內參。它用真實 ArUco 角點與 5.5 cm 尺寸估姿態，供驗證串接；API 的 scale 是 `estimated`，網頁明確標示未校正，不能視為精確公尺與角度。正式模式的 scale 才是 `metric`。兩種模式切換後重設原點。
 
 未提供任何模式時，預覽仍送 `initializing` 和 `calibration_required`，網站會說明原因，不再只顯示等待裝置。辨識到 tag 但角點太小或 PnP 品質不足則送 lost 及具體原因。
+
+## 姿態防抖
+
+3D 網頁預設開啟「姿態防抖」，可即時取消勾選比較。原始相機預覽不做電子影像防震，API 也保留原始 PnP 姿態；防抖在 MacBook／瀏覽器端執行，不用 NPU。預覽偵測另啟用 subpixel 角點細化，減少角點量化抖動。
+
+採 [One Euro](https://gery.casiez.net/publications/CHI2012-casiez.pdf) 的速度自適應低通概念：位置 lerp、旋轉 shortest-arc quaternion SLERP；低速較穩定，快速運動降低延遲。使用捕捉時間戳計算 dt，重複 API 封包不重複濾波；重設原點、失去追蹤或超過 250 ms 間隔會清除歷史。這是姿態平滑，不是去模糊、SLAM 或精度校正，不能消除所有步行晃動／PnP 解翻轉；快速錯誤姿態也可能通過。
+
+16–23 FPS 的偵測更新間隔約 43–63 ms。預覽網頁原先每次下載一張 JPEG 後再等 100 ms，限制了顯示流暢度；現改成 33 ms，實際顯示率仍受傳輸、解碼和相機處理率限制；頁面上的 FPS 是相機處理率，不是瀏覽器顯示率，也不是 NPU 使用率。平滑會增加延遲，需要實際擺頭比較，不承諾更準。

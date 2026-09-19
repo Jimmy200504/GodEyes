@@ -4,8 +4,9 @@ import type { HeadPose } from './utils/headPose';
 import { RemotePoseTracker } from './utils/remotePose';
 
 export default function App() {
-  const tracker = useRef(new RemotePoseTracker());
+  const tracker = useRef(new RemotePoseTracker(true));
   const [pose, setPose] = useState<HeadPose | null>(null);
+  const [smoothing, setSmoothing] = useState(true);
   const [estimated, setEstimated] = useState(false);
   const [status, setStatus] = useState('等待邊緣裝置');
 
@@ -45,6 +46,13 @@ export default function App() {
       <h1 className="font-bold">GodEyes · 頭戴相機 6DoF</h1>
       <p role="status">{status}</p>
       <p className="text-xs text-gray-300">{estimated ? 'Mac／本機瀏覽器渲染 · 未校正示範，請勿用於距離量測' : '邊緣裝置傳送姿態 · 本機渲染場景 · 位移與旋轉 1:1'}</p>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={smoothing} onChange={event => {
+          setSmoothing(event.target.checked);
+          tracker.current.setSmoothing(event.target.checked);
+        }} />
+        姿態防抖（減少細微抖動，會增加些微延遲）
+      </label>
       <button className="rounded bg-blue-600 px-3 py-2" onClick={() => tracker.current.reset()}>
         重設位置與正前方
       </button>
