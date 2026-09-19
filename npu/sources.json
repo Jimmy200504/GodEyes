@@ -1,0 +1,48 @@
+[
+  {
+    "path": "models/gesture/palm_detection_full_quant.tflite",
+    "url": "https://github.com/nxp-imx-support/nxp-demo-experience-assets/raw/lf-6.18.2_1.0.0/models/palm_detection_full_quant.tflite",
+    "sha256": "3b46f83b5366378c9a6003e01fc258ff18086be8e92045aae0ca1701da215a10",
+    "bytes": 1443752
+  },
+  {
+    "path": "models/gesture/hand_landmark_full_quant.tflite",
+    "url": "https://github.com/nxp-imx-support/nxp-demo-experience-assets/raw/lf-6.18.2_1.0.0/models/hand_landmark_full_quant.tflite",
+    "sha256": "0e816c37cf07ed2c57b9fc21f1ccbbc6528b3c48d16207fd88f6670cb99f0e85",
+    "bytes": 3276816
+  },
+  {
+    "path": "models/gesture/keypoint_classifier.tflite",
+    "url": "https://github.com/nxp-imx-support/nxp-demo-experience-assets/raw/lf-6.18.2_1.0.0/models/keypoint_classifier.tflite",
+    "sha256": "de646612f72941523d01ddb8cff8685ded1781f1a3b254eb5674c5f616782580",
+    "bytes": 6224
+  },
+  {
+    "path": "models/object-detection/yolov4-tiny_416_float32.tflite",
+    "url": "https://github.com/NXP/eiq-model-zoo/releases/download/v1.1/nxp_eiq_vision_model_zoo_v1.1.tgz",
+    "archive_member": "./tasks/object-detection/yolov4tiny/yolov4-tiny_416_float32.tflite",
+    "bytes": 24230192,
+    "sha256": "97f33bc248ee171f14cdcd53c03cfe86fb5ce5e890b03168fb65dc8f08b5ad9c"
+  },
+  {
+    "path": "models/object-detection/yolov4-tiny_416_quant.tflite",
+    "url": "https://github.com/NXP/eiq-model-zoo/releases/download/v1.1/nxp_eiq_vision_model_zoo_v1.1.tgz",
+    "archive_member": "./tasks/object-detection/yolov4tiny/yolov4-tiny_416_quant.tflite",
+    "bytes": 6170744,
+    "sha256": "e2dc90935f61aceaa6f9192465e3e92aa8aea6151574c7391c6e5e3cf7efeabe"
+  },
+  {
+    "path": "models/depth/tflite_from_saved_model__model_full_integer_quant.tflite",
+    "url": "https://s3.ap-northeast-2.wasabisys.com/pinto-model-zoo/081_MiDaS_v2/resources.tar.gz",
+    "archive_member": "tflite_from_saved_model/model_full_integer_quant.tflite",
+    "bytes": 18079320,
+    "sha256": "f0309423cf509f660ffd11535fb9ceb562c2a4d78241f45b3ac2ccb022bafdc4"
+  },
+  {
+    "path": "models/depth/tflite_from_saved_model__model_integer_quant.tflite",
+    "url": "https://s3.ap-northeast-2.wasabisys.com/pinto-model-zoo/081_MiDaS_v2/resources.tar.gz",
+    "archive_member": "tflite_from_saved_model/model_integer_quant.tflite",
+    "bytes": 18081968,
+    "sha256": "43f46c52def5bd17a3d826eb92cdef9cd6880c5e46fbc739cb815209ea427962"
+  }
+]

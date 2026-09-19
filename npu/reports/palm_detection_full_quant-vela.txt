@@ -1,0 +1,40 @@
+Warning: Unsupported TensorFlow Lite semantics for QUANTIZE 'tfl.quantize'. Placing on CPU instead
+ - Input(s), Output and Weight tensors must have quantization parameters
+   Op has tensors with missing quantization parameters: input_1:0
+Warning: Unsupported TensorFlow Lite semantics for DEQUANTIZE 'Identity_1:0'. Placing on CPU instead
+ - Input(s), Output and Weight tensors must have quantization parameters
+   Op has tensors with missing quantization parameters: Identity_1:0
+Warning: Unsupported TensorFlow Lite semantics for DEQUANTIZE 'Identity:0'. Placing on CPU instead
+ - Input(s), Output and Weight tensors must have quantization parameters
+   Op has tensors with missing quantization parameters: Identity:0
+
+Network summary for palm_detection_full_quant
+Accelerator configuration               Ethos_U65_256
+System configuration               Ethos_U65_High_End
+Memory mode                      Dedicated_Sram_384KB
+Accelerator clock                                1000 MHz
+Design peak SRAM bandwidth                      14.90 GB/s
+Design peak DRAM bandwidth                       3.49 GB/s
+
+Total SRAM used                                360.00 KiB
+Total DRAM used                               2408.88 KiB
+
+CPU operators = 3 (1.2%)
+NPU operators = 241 (98.8%)
+
+Average SRAM bandwidth                           2.03 GB/s
+Input   SRAM bandwidth                          19.57 MB/batch
+Weight  SRAM bandwidth                           5.59 MB/batch
+Output  SRAM bandwidth                          11.96 MB/batch
+Total   SRAM bandwidth                          37.23 MB/batch
+Total   SRAM bandwidth            per input     37.23 MB/inference (batch size 1)
+
+Average DRAM bandwidth                           1.41 GB/s
+Input   DRAM bandwidth                          15.88 MB/batch
+Weight  DRAM bandwidth                           1.11 MB/batch
+Output  DRAM bandwidth                           8.90 MB/batch
+Total   DRAM bandwidth                          25.88 MB/batch
+Total   DRAM bandwidth            per input     25.88 MB/inference (batch size 1)
+
+Neural network macs                         342108576 MACs/batch
+

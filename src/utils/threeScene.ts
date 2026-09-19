@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { GestureNavigation } from './gestureNavigation';
+import { connectGestureSocket } from './gestureSocket';
 import { RenderPoseSmoother } from './renderPose';
 import { SparkRenderer, SplatMesh } from '@sparkjsdev/spark';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -11,6 +13,7 @@ export interface ThreeSceneOptions {
   container: HTMLElement;
   width?: number;
   height?: number;
+  onGestureStatus?: (status: string) => void;
   onSceneStatus?: (status: 'loading' | 'ready' | 'error') => void;
 }
 
@@ -32,6 +35,9 @@ export class ThreeSceneManager {
   private worldEnabled = true;
   private worldReady = false;
   private disposed = false;
+  private gesture = new GestureNavigation();
+  private disconnectGesture: () => void;
+  private lastFrame = performance.now();
 
   constructor(options: ThreeSceneOptions) {
     const width = options.width || options.container.clientWidth;
@@ -60,6 +66,11 @@ export class ThreeSceneManager {
     this.spark = new SparkRenderer({ renderer: this.renderer, maxStdDev: 2 });
     this.scene.add(this.spark);
 
+    this.disconnectGesture = connectGestureSocket(
+      (command, age) => this.gesture.accept(command, age),
+      this.gesture.clear,
+      options.onGestureStatus ?? (() => {}),
+    );
     this.loadShoeModel();
     this.createWireframeRoom();
     this.createDebugHelpers();
@@ -270,7 +281,7 @@ export class ThreeSceneManager {
   }
 
   holdHeadPose(): void { this.renderPose.hold(); }
-  resetHeadPose(): void { this.renderPose.reset(); }
+  resetHeadPose(): void { this.renderPose.reset(); this.gesture.reset(); }
   setRenderSmoothing(enabled: boolean): void { this.renderPose.enabled = enabled; }
 
   setDebugMode(enabled: boolean): void {
@@ -341,6 +352,10 @@ export class ThreeSceneManager {
 
     this.currentHeadPose = this.renderPose.step(performance.now()) ?? this.currentHeadPose;
     this.offAxisCamera.updateFromHeadPose(this.currentHeadPose);
+    const now = performance.now();
+    this.gesture.update((now - this.lastFrame) / 1000, this.camera.quaternion, now);
+    this.lastFrame = now;
+    this.camera.position.add(this.gesture.offset);
 
     if (this.debugMode && this.debugHelpers.length > 1) {
       this.debugHelpers[1].position.copy(this.camera.position);
@@ -372,6 +387,7 @@ export class ThreeSceneManager {
 
   dispose(): void {
     this.disposed = true;
+    this.disconnectGesture();
     this.stop();
     this.removeWireframeRoom();
     // An in-flight splat is disposed by loadWorld after decoding completes.

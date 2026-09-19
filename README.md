@@ -1,8 +1,10 @@
 # GodEyes · 頭戴相機姿態傳輸版
 
+本 worktree 已加入 **NPU 手勢移動與旋轉**：張掌控制前後左右、食指控制左右轉向／上下看、握拳停止。板子與電腦的啟動方式見 [手勢控制指南](npu/GESTURE_CONTROL.md)。
+
 此分支由 `main` 的 `2baad2b` 建立，方向是 **頭戴朝外相機 → 邊緣裝置估計 6DoF → 傳送 pose → 另一台電腦渲染 3D**。邊緣裝置不 host 網站、不渲染場景。
 
-目前已實作 **單一固定 ArUco B → PnP → 公尺尺度 pose API → 外部電腦渲染**，包括 webcam 擷取、標記產生與相機校正工具。使用 Logitech webcam 頭戴朝外、沒有 IMU；不需要 A 或 SLAM，尚未做真機精度／效能驗證，也未使用 NPU。板子背景沿用舊 worktree 的 FRDM-i.MX93 記錄。
+目前已實作 **單一固定 ArUco B → PnP → 公尺尺度 pose API → 外部電腦渲染**，包括 webcam 擷取、標記產生與相機校正工具。使用 Logitech webcam 頭戴朝外、沒有 IMU；不需要 A 或 SLAM，尚未做真機精度／效能驗證，姿態解算不使用 NPU；本 worktree 另以 NPU 執行手勢模型。板子背景沿用舊 worktree 的 FRDM-i.MX93 記錄。
 
 目前執行中的相機預覽已整合 PnP 與 API 傳送，使用 `--approximate` 的未校正示範模式；以真實 B 角點估姿態，但距離與角度尚未精確校正。API 會標為 `estimated`，前端亦明確標示。
 

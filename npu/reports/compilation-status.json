@@ -1,0 +1,13 @@
+{
+  "vela_version": "4.4.1",
+  "accelerator_config": "ethos-u65-256",
+  "palm": "success",
+  "hand_landmark": "success",
+  "yolov4_tiny": "success",
+  "midas_full_integer": {
+    "status": "failed",
+    "exit_code": -9,
+    "reason": "Linux kernel OOM killer; compiler anon-rss 810992 kB"
+  },
+  "hardware_inference_tested": false
+}

@@ -13,6 +13,7 @@ export default function App() {
   const [poseEpoch, setPoseEpoch] = useState(0);
   const [rtt, setRtt] = useState(0);
   const [estimated, setEstimated] = useState(false);
+  const [gestureStatus, setGestureStatus] = useState('等待手勢 NPU');
   const [status, setStatus] = useState('等待邊緣裝置');
 
   useEffect(() => connectPoseSocket((packet, ageMs) => {
@@ -27,11 +28,14 @@ export default function App() {
   }, value => setRtt(Math.round(value))), []);
 
   return <main className="h-screen w-screen relative bg-black">
-    <ThreeView headPose={pose} renderSmoothing={renderSmoothing} poseEpoch={poseEpoch} />
+    <ThreeView onGestureStatus={setGestureStatus} headPose={pose} renderSmoothing={renderSmoothing} poseEpoch={poseEpoch} />
     <CameraPreview />
     <div className="absolute bottom-4 left-4 z-20 rounded-lg bg-black/80 p-4 text-white space-y-2">
       <h1 className="font-bold">GodEyes · 頭戴相機 6DoF</h1>
       <p role="status">{status}</p>
+      <p role="status" className="text-sm text-cyan-300">{gestureStatus}</p>
+      <p className="text-xs text-gray-300">張掌：移動 · 食指：旋轉 · 手移向畫面上下左右控制方向</p>
+      <p className="text-xs text-gray-300">手放中央、握拳或移出畫面：停止</p>
       <p className="text-xs text-gray-300">{estimated ? 'Mac／本機瀏覽器渲染 · 未校正示範，請勿用於距離量測' : '邊緣裝置傳送姿態 · 本機渲染場景 · 位移與旋轉 1:1'}</p>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={smoothing} onChange={event => {

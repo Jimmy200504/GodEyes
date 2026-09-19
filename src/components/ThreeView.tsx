@@ -5,6 +5,7 @@ import { CalibrationData } from '../utils/calibration';
 
 interface ThreeViewProps {
   headPose: HeadPose | null;
+  onGestureStatus?: (status: string) => void;
   renderSmoothing?: boolean;
   poseEpoch?: number;
 }
@@ -20,7 +21,9 @@ export interface ThreeViewHandle {
   getModelRotation: () => { x: number; y: number; z: number };
 }
 
-const ThreeView = forwardRef<ThreeViewHandle, ThreeViewProps>(({ headPose, renderSmoothing = true, poseEpoch = 0 }, ref) => {
+const ThreeView = forwardRef<ThreeViewHandle, ThreeViewProps>(({ headPose, onGestureStatus, renderSmoothing = true, poseEpoch = 0 }, ref) => {
+  const gestureStatusRef = useRef(onGestureStatus);
+  gestureStatusRef.current = onGestureStatus;
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneManagerRef = useRef<ThreeSceneManager | null>(null);
   useEffect(() => {
@@ -28,6 +31,7 @@ const ThreeView = forwardRef<ThreeViewHandle, ThreeViewProps>(({ headPose, rende
 
     sceneManagerRef.current = new ThreeSceneManager({
       container: containerRef.current,
+      onGestureStatus: status => gestureStatusRef.current?.(status),
       width: containerRef.current.clientWidth,
       height: containerRef.current.clientHeight
     });
@@ -113,7 +117,7 @@ const ThreeView = forwardRef<ThreeViewHandle, ThreeViewProps>(({ headPose, rende
       <div
         ref={containerRef}
         tabIndex={0}
-        aria-label="3D 場景，頭部位移控制，可調整角度倍率"
+        aria-label="3D 場景，頭部追蹤與手勢移動旋轉"
         onPointerDown={() => containerRef.current?.focus({ preventScroll: true })}
         className="w-full h-full outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400"
         style={{ touchAction: 'none' }}
