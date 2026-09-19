@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Maximize, Minimize, Settings, Bug } from 'lucide-react';
 import FaceMeshView from './components/FaceMeshView';
 import ThreeView, { ThreeViewHandle } from './components/ThreeView';
 import CalibrationWizard from './components/CalibrationWizard';
-import ShoeControlPanel from './components/ShoeControlPanel';
 import { HeadPose } from './utils/headPose';
 import { calibrationManager, CalibrationData } from './utils/calibration';
 
@@ -13,11 +12,8 @@ function App() {
   const [currentHeadPose, setCurrentHeadPose] = useState<HeadPose | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showCalibration, setShowCalibration] = useState(false);
-  const [calibration, setCalibration] = useState<CalibrationData>(calibrationManager.getCalibration());
   const [debugMode, setDebugMode] = useState(false);
-  const [shoePosition, setShoePosition] = useState({ x: 0, y: -0.09, z: -0.03 });
-  const [shoeScale, setShoeScale] = useState(0.071);
-  const [shoeRotation, setShoeRotation] = useState({ x: 0, y: -0.628, z: 0 });
+  const [controlsContainer, setControlsContainer] = useState<HTMLDivElement | null>(null);
   const threeViewRef = useRef<ThreeViewHandle>(null);
 
   useEffect(() => {
@@ -93,7 +89,6 @@ function App() {
   }, []);
 
   const handleCalibrationComplete = (newCalibration: CalibrationData) => {
-    setCalibration(newCalibration);
     if (threeViewRef.current) {
       threeViewRef.current.updateCalibration(newCalibration);
     }
@@ -107,46 +102,11 @@ function App() {
     }
   };
 
-  const handleShoePositionChange = (x: number, y: number, z: number) => {
-    setShoePosition({ x, y, z });
-    if (threeViewRef.current) {
-      threeViewRef.current.updateModelPosition(x, y, z);
-    }
-  };
-
-  const handleShoeScaleChange = (scale: number) => {
-    setShoeScale(scale);
-    if (threeViewRef.current) {
-      threeViewRef.current.updateModelScale(scale);
-    }
-  };
-
-  const handleShoeRotationChange = (x: number, y: number, z: number) => {
-    setShoeRotation({ x, y, z });
-    if (threeViewRef.current) {
-      threeViewRef.current.updateModelRotation(x, y, z);
-    }
-  };
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (threeViewRef.current) {
-        const pos = threeViewRef.current.getModelPosition();
-        const scale = threeViewRef.current.getModelScale();
-        const rot = threeViewRef.current.getModelRotation();
-        setShoePosition(pos);
-        setShoeScale(scale);
-        setShoeRotation(rot);
-      }
-    }, 500);
-    return () => clearTimeout(timer);
-  }, []);
-
   return (
     <div className="min-h-screen bg-gray-900 flex flex-col relative">
       <main className="flex-1 relative">
         {!isCheckingCdn && !isCdnAvailable && (
-          <div className="absolute top-4 left-4 right-4 z-30 max-w-2xl mx-auto p-3 bg-yellow-50 text-yellow-800 rounded-md">
+          <div className="absolute bottom-56 left-4 right-4 z-30 max-w-2xl mx-auto p-3 bg-yellow-50 text-yellow-800 rounded-md">
             <p className="text-sm">
               We're having trouble connecting to the required resources. Please check your internet connection.
             </p>
@@ -160,18 +120,11 @@ function App() {
           />
         </div>
 
-        <ShoeControlPanel
-          onPositionChange={handleShoePositionChange}
-          onScaleChange={handleShoeScaleChange}
-          onRotationChange={handleShoeRotationChange}
-          initialPosition={shoePosition}
-          initialScale={shoeScale}
-          initialRotation={shoeRotation}
-        />
+        <div ref={setControlsContainer} className="absolute top-4 left-4 z-20" />
 
         <div className="absolute bottom-4 right-4 z-10 rounded-lg overflow-hidden shadow-2xl border-2 border-white">
           <div className="w-64 h-48">
-            <FaceMeshView onHeadPoseUpdate={handleHeadPoseUpdate} />
+            <FaceMeshView onHeadPoseUpdate={handleHeadPoseUpdate} controlsContainer={controlsContainer} />
           </div>
         </div>
 

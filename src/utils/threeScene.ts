@@ -5,7 +5,6 @@ import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { HeadPose } from './headPose';
 import { OffAxisCamera } from './offAxisCamera';
 import { calibrationManager, CalibrationData } from './calibration';
-import { KeyboardNavigation } from './keyboardNavigation';
 
 export interface ThreeSceneOptions {
   container: HTMLElement;
@@ -31,8 +30,6 @@ export class ThreeSceneManager {
   private worldEnabled = true;
   private worldReady = false;
   private disposed = false;
-  private navigation: KeyboardNavigation;
-  private lastFrameTime: number | null = null;
 
   constructor(options: ThreeSceneOptions) {
     const width = options.width || options.container.clientWidth;
@@ -58,7 +55,6 @@ export class ThreeSceneManager {
     this.renderer.setSize(width, height);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     options.container.appendChild(this.renderer.domElement);
-    this.navigation = new KeyboardNavigation(options.container);
     this.spark = new SparkRenderer({ renderer: this.renderer, maxStdDev: 2 });
     this.scene.add(this.spark);
 
@@ -332,24 +328,15 @@ export class ThreeSceneManager {
     return { x: 0, y: -0.628, z: 0 };
   }
 
-  resetNavigation(): void {
-    this.navigation.reset();
-  }
-
-  private animate = (time = performance.now()): void => {
+  private animate = (): void => {
     if (!this.isRunning) return;
 
     this.animationFrameId = requestAnimationFrame(this.animate);
 
     this.offAxisCamera.updateFromHeadPose(this.currentHeadPose);
-    const seconds = this.lastFrameTime === null ? 0 : (time - this.lastFrameTime) / 1000;
-    this.lastFrameTime = time;
-    this.navigation.update(seconds, this.camera.quaternion);
-    this.camera.position.add(this.navigation.offset);
 
     if (this.debugMode && this.debugHelpers.length > 1) {
-      const worldPos = this.offAxisCamera.headPoseToWorldPosition(this.currentHeadPose);
-      this.debugHelpers[1].position.set(worldPos.x, worldPos.y, worldPos.z);
+      this.debugHelpers[1].position.copy(this.camera.position);
     }
 
     this.renderer.render(this.scene, this.camera);
@@ -364,8 +351,6 @@ export class ThreeSceneManager {
 
   stop(): void {
     this.isRunning = false;
-    this.lastFrameTime = null;
-    this.navigation.clear();
     if (this.animationFrameId !== null) {
       cancelAnimationFrame(this.animationFrameId);
       this.animationFrameId = null;
@@ -381,7 +366,6 @@ export class ThreeSceneManager {
   dispose(): void {
     this.disposed = true;
     this.stop();
-    this.navigation.dispose();
     this.removeWireframeRoom();
     // An in-flight splat is disposed by loadWorld after decoding completes.
     if (this.worldReady) this.world?.dispose();

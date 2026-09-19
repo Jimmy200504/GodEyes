@@ -1,4 +1,4 @@
-import { Matrix4, Quaternion } from 'three';
+import { Euler, Matrix4, Quaternion, Vector3 } from 'three';
 
 export interface HeadPose {
   x: number;
@@ -6,7 +6,64 @@ export interface HeadPose {
   z: number;
   /** Vertical displacement from the neutral pose, in scene meters. */
   heightOffset?: number;
+  position?: { x: number; y: number; z: number };
   orientation?: { x: number; y: number; z: number; w: number };
+}
+
+export const DEFAULT_ROTATION_GAINS = { horizontal: 2, vertical: 1, roll: 1 };
+export type RotationGains = typeof DEFAULT_ROTATION_GAINS;
+
+/** Metric head movement with a clutch: rebase without losing the explored pose. */
+export class HeadNavigationTracker {
+  private rotation = new HeadRotationTracker();
+  private neutral: Vector3 | null = null;
+  private position = new Vector3();
+  private orientation = new Quaternion();
+  private anchorPosition = new Vector3();
+  private anchorOrientation = new Quaternion();
+  private gains = { ...DEFAULT_ROTATION_GAINS };
+
+  setRotationGains(gains: RotationGains): void {
+    if (!Object.values(gains).every(value => Number.isFinite(value) && value >= 0.5 && value <= 4)) return;
+    this.gains = { ...gains };
+    this.rebase();
+  }
+
+  rebase(): void {
+    this.neutral = null;
+    this.rotation.reset();
+    this.anchorPosition.copy(this.position);
+    this.anchorOrientation.copy(this.orientation);
+  }
+
+  reset(): void {
+    this.position.set(0, 0, 0);
+    this.orientation.identity();
+    this.rebase();
+  }
+
+  update(data: number[]): HeadPose | null {
+    const relative = this.rotation.update(data);
+    if (!relative) return null;
+    // Unmirrored MediaPipe translation is in centimeters. Map into the
+    // viewer's axes: right +X, up +Y, toward the screen -Z.
+    const measured = new Vector3(-data[12], data[13], -data[14]).multiplyScalar(0.01);
+    if (!this.neutral) this.neutral = measured.clone();
+    this.position.copy(measured).sub(this.neutral)
+      .applyQuaternion(this.anchorOrientation).add(this.anchorPosition);
+    const angles = new Euler().setFromQuaternion(
+      new Quaternion(relative.x, relative.y, relative.z, relative.w), 'YXZ'
+    );
+    angles.x *= this.gains.vertical;
+    angles.y *= this.gains.horizontal;
+    angles.z *= this.gains.roll;
+    this.orientation.copy(this.anchorOrientation).multiply(new Quaternion().setFromEuler(angles));
+    return {
+      x: 0.5, y: 0.5, z: 1,
+      position: { x: this.position.x, y: this.position.y, z: this.position.z },
+      orientation: { x: this.orientation.x, y: this.orientation.y, z: this.orientation.z, w: this.orientation.w },
+    };
+  }
 }
 
 // MediaPipe's face matrix is column-major and faces +Z. The camera faces -Z.
