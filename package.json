@@ -4,6 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "precompute:mac": "node precompute/serve-mac.mjs",
+    "test:precompute": "node --max-old-space-size=64 --test tests/precompute.test.mjs",
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",

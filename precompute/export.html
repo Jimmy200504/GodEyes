@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GodEyes · MacBook 離線預算圖</title>
+<link rel="stylesheet" href="./runtime/style.css">
+<main>
+  <h1>離線預算圖</h1>
+  <p>僅限 MacBook GPU。固定原場景起點，水平 ±35°、垂直 ±10°，75° 垂直視野。</p>
+  <nav>
+    <label>解析度 <select id="size"><option value="960,540">960 × 540</option><option value="1280,720">1280 × 720</option></select></label>
+    <label>視角 <select id="count"><option value="15">45（15 × 3）</option><option value="7">21（7 × 3）</option><option value="20">60（20 × 3）</option></select></label>
+    <label>格式 <select id="format"><option value="jpeg">JPEG（建議）</option><option value="rgb565le">RGB565 little-endian</option></select></label>
+    <button id="export">選擇空資料夾並匯出</button>
+  </nav>
+  <p>使用桌面 Chrome / Edge 的資料夾寫入功能。一次只渲染、寫入一張，不累積整批影像。</p>
+  <p id="status" role="status">尚未啟動 GPU。</p>
+  <div id="preview"></div>
+</main>
+<script type="module" src="./export.mjs"></script>
+</html>

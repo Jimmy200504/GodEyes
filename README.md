@@ -1,5 +1,7 @@
 # GodEyes
 
+> i.MX93 輕量展示實驗：見 [獨立離線視角模組](precompute/README.md)。在 MacBook 預算圖，裝置端只顯示預算影像；請勿在板上啟動下方原版開發伺服器。
+
 透過攝影機追蹤頭部旋轉，在瀏覽器中以水平 1：4、鉛直 1：2 的角度倍率探索 3D 場景。使用 React、TypeScript、Three.js、MediaPipe Face Landmarker 與 Spark Gaussian Splatting renderer。
 
 ## 目前功能

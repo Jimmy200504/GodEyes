@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GodEyes · 預算視角</title>
+<link rel="stylesheet" href="./style.css">
+<main>
+  <header><strong>GodEyes</strong><span>預算視角展示</span></header>
+  <canvas id="view" width="960" height="540" tabindex="0" aria-label="場景視角，拖曳或使用方向鍵"></canvas>
+  <nav>
+    <label>左右 <input id="yaw" type="range" step="0.1" value="0" disabled></label>
+    <label>上下 <input id="pitch" type="range" step="0.1" value="0" disabled></label>
+    <button id="reset" disabled>回到正前方</button>
+    <button id="retry" hidden>重試</button>
+  </nav>
+  <p id="status" role="status">正在讀取場景…</p>
+  <p class="hint">拖曳畫面或使用方向鍵探索。此版本固定觀看位置。</p>
+</main>
+<script type="module" src="./viewer.mjs"></script>
+</html>
