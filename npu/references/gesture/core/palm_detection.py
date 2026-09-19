@@ -156,6 +156,7 @@ class PalmDetector:
 
         # Apply sigmoid to raw scores and find the predictions above the threshold
         scores = self.sigmoid(out_clf)
+        self.last_score = float(scores.max())
         mask = scores > self._palm_detection_conf
 
         detections = out_reg[mask]

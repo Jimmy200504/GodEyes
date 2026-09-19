@@ -18,9 +18,9 @@ export class GestureSlamClutch {
   private offsetRotation = new Quaternion();
   private offsetPosition = new Vector3();
 
-  observeHand(present: boolean, fresh: boolean, now: number): void {
+  observeHand(present: boolean, fresh: boolean, now: number, moving = false): void {
     if (!fresh) { this.absentSince = null; return; }
-    if (present) {
+    if (present || moving) {
       this.absentSince = null;
       this.held = true;
       this.waiting = false;

@@ -75,7 +75,7 @@ export class ThreeSceneManager {
       this.gesture.clear,
       options.onGestureStatus ?? (() => {}),
       data => {
-        this.slamClutch.observeHand(data.handPresent, data.accepted, performance.now());
+        this.slamClutch.observeHand(data.handPresent, data.accepted, performance.now(), Object.values(data.command).some(value => Math.abs(value) > .001));
         options.onGestureTelemetry?.({ ...data, slamClutched: this.slamClutch.held, slamResumeWaiting: this.slamClutch.waiting });
       },
     );

@@ -4,6 +4,12 @@ export interface GestureTelemetry {
   slamClutched?: boolean;
   slamResumeWaiting?: boolean;
   handPresent: boolean;
+  motionHoldMs?: number;
+  diagnostics?: {
+    stage: string; palmScore: number | null; landmarkScore: number | null;
+    trackingMs: number | null; classificationMs: number | null;
+    frameRoundtripMs: number | null; sourceAgeMs: number | null; socketRoundtripMs: number;
+  };
   connected: boolean;
   accepted: boolean;
   gesture: string;
@@ -61,8 +67,18 @@ export function connectGestureSocket(
         if (data.version !== 1 || typeof data.age_ms !== 'number' || !Number.isFinite(age) || data.age_ms < 0) throw Error('invalid packet');
         clearTimeout(freshTimer);
         if (typeof data.control_hint === 'string' && data.control_hint.startsWith('校正')) calibrationPending = false;
+        const metric = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+        const diagnostics = data.diagnostics;
         telemetry = {
           handPresent: data.hand_present === true || (data.hand_present === undefined && ['Open', 'Close', 'Point', 'Unknown'].includes(data.gesture)),
+          motionHoldMs: typeof data.motion_hold_ms === 'number' && Number.isFinite(data.motion_hold_ms) ? Math.max(0, Math.min(1000, data.motion_hold_ms - (performance.now() - requested))) : 0,
+          diagnostics: diagnostics && typeof diagnostics === 'object' ? {
+            stage: typeof diagnostics.stage === 'string' ? diagnostics.stage : 'unknown',
+            palmScore: metric(diagnostics.palm_score), landmarkScore: metric(diagnostics.landmark_score),
+            trackingMs: metric(diagnostics.tracking_ms), classificationMs: metric(diagnostics.classification_ms),
+            frameRoundtripMs: metric(diagnostics.frame_roundtrip_ms), sourceAgeMs: metric(diagnostics.source_age_ms),
+            socketRoundtripMs: performance.now() - requested,
+          } : undefined,
           connected: true, accepted: false,
           gesture: typeof data.gesture === 'string' ? data.gesture : 'Unknown',
           confidence: typeof data.confidence === 'number' && Number.isFinite(data.confidence) && data.confidence >= 0 && data.confidence <= 1 ? data.confidence : null,
@@ -80,7 +96,7 @@ export function connectGestureSocket(
           telemetry.accepted = true;
           telemetry.command = { ...data.command };
           freshTimer = setTimeout(() => { telemetry.ageMs = 250; halt('手勢資料過期，已停止'); }, Math.max(0, 250 - age));
-          const labels: Record<string, string> = { Open: '張掌', Point: '食指 · 平移', Close: '握拳 · 停止', None: '未偵測到手 · 停止', Unknown: '手勢不確定 · 停止' };
+          const labels: Record<string, string> = { Open: '張掌', Point: '食指 · 平移', Close: '握拳 · 停止', None: '未偵測到手', Unknown: '手勢不確定' };
           const hint = typeof data.control_hint === 'string' ? data.control_hint.slice(0, 100) : '';
           onStatus((labels[data.gesture] ?? '手勢停止') + (hint ? ` · ${hint}` : ''));
         } else halt('手勢資料過期或無效，已停止');

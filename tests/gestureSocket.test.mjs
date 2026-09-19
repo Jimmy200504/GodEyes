@@ -100,3 +100,20 @@ test('calibration stops motion and ignores an in-flight command until backend ac
   assert.equal(h.telemetry.at(-1).handPresent, true);
   assert.equal(h.telemetry.at(-1).command.forward, 0);
 }));
+
+test('reports raw detection separately from held motion and stage timings', () => harness(h => {
+  const ws = h.sockets[0]; ws.onopen(); h.time(40);
+  ws.onmessage({ data: JSON.stringify({ version: 1, age_ms: 50, status: 'tracking', gesture: 'None', hand_present: false,
+    motion_hold_ms: 600, control_hint: '延續上次方向', command: { forward: 0, sideways: 0, vertical: 1, yaw: 0, pitch: 0 },
+    diagnostics: { stage: 'no_palm', palm_score: .2, landmark_score: null, tracking_ms: 45, classification_ms: null, frame_roundtrip_ms: 20, source_age_ms: 30 } }) });
+  const sample = h.telemetry.at(-1);
+  assert.equal(sample.handPresent, false);
+  assert.equal(sample.command.vertical, 1);
+  assert.equal(sample.motionHoldMs, 560);
+  assert.equal(sample.diagnostics.stage, 'no_palm');
+  assert.equal(sample.diagnostics.classificationMs, null);
+  assert.equal(sample.diagnostics.socketRoundtripMs, 40);
+  assert.match(h.statuses.at(-1), /延續/);
+  h.tick(160);
+  assert.equal(h.telemetry.at(-1).command.vertical, 0);
+}));

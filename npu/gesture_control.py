@@ -148,7 +148,7 @@ class GestureGate:
             action = ('右移' if command['sideways'] > 0 else '左移' if command['sideways'] < 0
                       else '升高' if command['vertical'] > 0 else '降低' if command['vertical'] < 0
                       else '方向不明：停止')
-            return self._confirm(command, '食指：' + action)
+            return self._confirm(command, '食指：' + action, count=1)
 
         # Wave detection uses palm-center velocity over up to 250 ms. Hand
         # entry and scene/hand jumps don't create a swipe; stopping motion
@@ -208,3 +208,29 @@ class GestureGate:
             return dict(STOP)
         forward = 1.0 if (1 if facing > 0 else -1) == self.outward[label] else -1.0
         return self._confirm(dict(STOP, forward=forward), '掌心朝外：前進' if forward > 0 else '掌心朝鏡頭：後退', count=3)
+
+
+class MotionPulse:
+    """Bridge missed detections for at most one second after a real command.
+
+    Polling and empty observations never renew the deadline. Fist, calibration,
+    and input errors cancel it. The transport still rejects stale frames.
+    """
+    def __init__(self):
+        self.clear()
+
+    def clear(self):
+        self.command = dict(STOP)
+        self.deadline = 0.0
+
+    def update(self, command, captured, cancel=False):
+        if cancel:
+            self.clear()
+        elif any(command.values()):
+            self.command = dict(command)
+            self.deadline = captured + 1.0
+
+    def get(self, now):
+        if now >= self.deadline:
+            return dict(STOP), 0
+        return dict(self.command), round((self.deadline - now) * 1000)

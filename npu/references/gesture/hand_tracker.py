@@ -132,6 +132,7 @@ class HandTracker:
                     enclosing a hand.
         """
         detections = []
+        self.diagnostics = dict(stage='no_palm', palm_score=None, landmark_score=None)
         # Run the palm detector again because we did not find any hands or we
         # missed them in the frame
         if len(self._previous_hand_bboxes) < self._num_hands:
@@ -143,6 +144,7 @@ class HandTracker:
 
             in_frame, padding = utils_image.preprocess(in_frame, 192)
             palm_bboxes = self._palm_detector(in_frame)
+            self.diagnostics['palm_score'] = self._palm_detector.last_score
 
             if palm_bboxes:
                 for i in range(self._num_hands - len(self._previous_hand_bboxes)):
@@ -177,6 +179,7 @@ class HandTracker:
                 # Prepare the ROI before calculating the landmarks
                 norm_cropped, padding = utils_image.preprocess(cropped, 224)
                 lm_bbox = self._hand_landmarks(norm_cropped)
+                self.diagnostics.update(stage='landmark_rejected', landmark_score=lm_bbox.score)
 
                 if lm_bbox.score < self._hand_landmark_conf:
                     continue
@@ -198,6 +201,7 @@ class HandTracker:
                 )
 
                 detections.append((lm_bbox.landmarks, hand_bbox, lm_bbox.handedness))
+                self.diagnostics['stage'] = 'tracking'
                 new_hand_bboxes.append(hand_bbox)
 
             self._previous_hand_bboxes = new_hand_bboxes

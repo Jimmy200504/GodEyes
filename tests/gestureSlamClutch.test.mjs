@@ -45,3 +45,20 @@ test('new hand interrupts pending resume and reset clears the rebase', () => {
   clutch.reset();
   assert.deepEqual(clutch.apply(pose(0), 3), pose(0));
 });
+
+
+test('an active one-second motion keeps SLAM held even without a detected hand', () => {
+  const clutch = new GestureSlamClutch();
+  const before = clutch.apply(pose(2), 1);
+  clutch.observeHand(true, true, 0);
+  for (const now of [100, 500, 900]) {
+    clutch.observeHand(false, true, now, true);
+    assert.deepEqual(clutch.apply(pose(8), 2), before);
+  }
+  clutch.observeHand(false, true, 1000, false);
+  clutch.observeHand(false, true, 1300, false);
+  assert.equal(clutch.held, true);
+  clutch.observeHand(false, true, 1351, false);
+  assert.equal(clutch.waiting, true);
+  assert.deepEqual(clutch.apply(pose(8), 2), before);
+});
