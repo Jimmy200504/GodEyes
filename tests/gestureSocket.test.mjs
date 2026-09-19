@@ -26,7 +26,7 @@ function harness(run) {
   };
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, value });
   const stop = connectGestureSocket((command, age) => { accepted.push({ command, age }); return age < 250; }, () => clears++, status => statuses.push(status), data => telemetry.push(data));
-  const message = (ws, age = 0) => ws.onmessage({ data: JSON.stringify({ version: 1, age_ms: age, gesture: 'Open', command: { forward: 1, sideways: 0, yaw: 0, pitch: 0 } }) });
+  const message = (ws, age = 0) => ws.onmessage({ data: JSON.stringify({ version: 2, age_ms: age, gesture: 'Open', command: { forward: 1, sideways: 0, yaw: 0, pitch: 0 } }) });
   try {
     run({ sockets, timers, accepted, statuses, telemetry, doc, stop, message, clears: () => clears, time: value => now = value,
       tick: ms => { const item = [...timers].find(([, value]) => value.ms === ms); assert.ok(item); timers.delete(item[0]); item[1].fn(); },
@@ -71,7 +71,7 @@ test('malformed packets and failed opening stop and reconnect', () => harness(h 
 
 test('telemetry clears motion on frame expiry and disconnect without losing the last detection', () => harness(h => {
   const ws = h.sockets[0]; ws.onopen();
-  ws.onmessage({ data: JSON.stringify({ version: 1, age_ms: 50, status: 'tracking', gesture: 'Open', confidence: .93, backend: 'NPU', inference_ms: 32, command: { forward: 1, sideways: 0, yaw: 0, pitch: 0 } }) });
+  ws.onmessage({ data: JSON.stringify({ version: 2, age_ms: 50, status: 'tracking', gesture: 'Open', confidence: .93, backend: 'NPU', inference_ms: 32, command: { forward: 1, sideways: 0, yaw: 0, pitch: 0 } }) });
   const sample = h.telemetry.at(-1);
   assert.equal(sample.gesture, 'Open');
   assert.equal(sample.confidence, .93);
@@ -87,33 +87,27 @@ test('telemetry clears motion on frame expiry and disconnect without losing the 
   assert.equal(h.telemetry.at(-1).connected, false);
 }));
 
-test('calibration stops motion and ignores an in-flight command until backend acknowledges', () => harness(h => {
+test('old backend commands are stopped with an update message', () => harness(h => {
   const ws = h.sockets[0]; ws.onopen(); h.message(ws);
-  assert.equal(h.stop.calibratePalm(), true);
-  assert.equal(ws.sent.at(-1), 'calibrate_palm_out');
-  h.message(ws);
+  ws.onmessage({ data: JSON.stringify({ version: 1, age_ms: 0, gesture: 'Open',
+    command: { forward: -1, sideways: 0, yaw: 1, pitch: 0 } }) });
   assert.equal(h.accepted.length, 1);
   assert.equal(h.telemetry.at(-1).accepted, false);
-  ws.onmessage({ data: JSON.stringify({ version: 1, age_ms: 0, status: 'tracking', gesture: 'Open', hand_present: true,
-    control_hint: '校正中：手背朝鏡頭', command: { forward: 0, sideways: 0, vertical: 0, yaw: 0, pitch: 0 } }) });
-  assert.equal(h.accepted.length, 2);
-  assert.equal(h.telemetry.at(-1).handPresent, true);
-  assert.equal(h.telemetry.at(-1).command.forward, 0);
+  assert.match(h.statuses.at(-1), /更新.*重啟/);
 }));
 
-test('reports raw detection separately from held motion and stage timings', () => harness(h => {
+test('reports missing detections as stopped while preserving stage timings', () => harness(h => {
   const ws = h.sockets[0]; ws.onopen(); h.time(40);
-  ws.onmessage({ data: JSON.stringify({ version: 1, age_ms: 50, status: 'tracking', gesture: 'None', hand_present: false,
-    motion_hold_ms: 600, control_hint: '延續上次方向', command: { forward: 0, sideways: 0, vertical: 1, yaw: 0, pitch: 0 },
+  ws.onmessage({ data: JSON.stringify({ version: 2, age_ms: 50, status: 'tracking', gesture: 'None', hand_present: false,
+    control_hint: '未確認手勢：停止', command: { forward: 0, sideways: 0, vertical: 0, yaw: 0, pitch: 0 },
     diagnostics: { stage: 'no_palm', palm_score: .2, landmark_score: null, tracking_ms: 45, classification_ms: null, frame_roundtrip_ms: 20, source_age_ms: 30 } }) });
   const sample = h.telemetry.at(-1);
   assert.equal(sample.handPresent, false);
-  assert.equal(sample.command.vertical, 1);
-  assert.equal(sample.motionHoldMs, 560);
+  assert.equal(sample.command.vertical, 0);
   assert.equal(sample.diagnostics.stage, 'no_palm');
   assert.equal(sample.diagnostics.classificationMs, null);
   assert.equal(sample.diagnostics.socketRoundtripMs, 40);
-  assert.match(h.statuses.at(-1), /延續/);
+  assert.match(h.statuses.at(-1), /停止/);
   h.tick(160);
   assert.equal(h.telemetry.at(-1).command.vertical, 0);
 }));

@@ -13,7 +13,7 @@ Worktree：`/root/GodEyes-worktrees/imx-npu-models`；branch：`vaclisinc/imx-np
 
 ## 手勢控制應用
 
-已新增張掌移動、食指旋轉、握拳停止的前後端串接，啟動與操作見 [GESTURE_CONTROL.md](GESTURE_CONTROL.md)。已驗證板上 NPU 載入與 15 張真實相機影格推論；真人手勢準確度與操作體感仍待驗證。
+目前使用張掌前進、食指指向平移／升降、握拳或收手停止的簡易控制，不需校正，暫不提供後退與手勢旋轉，啟動與操作見 [GESTURE_CONTROL.md](GESTURE_CONTROL.md)。已驗證板上 NPU 載入與 15 張真實相機影格推論；真人手勢準確度與操作體感仍待驗證。
 
 ## 準備結果
 

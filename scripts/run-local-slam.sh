@@ -75,7 +75,7 @@ try:
     with connect('ws://127.0.0.1:18782/api/gesture/ws', open_timeout=3, close_timeout=.5) as ws:
         ws.send('next')
         packet = json.loads(ws.recv(timeout=3))
-        if packet.get('version') != 1 or not isinstance(packet.get('command'), dict):
+        if packet.get('version') != 2 or not isinstance(packet.get('command'), dict):
             raise ValueError('手勢封包格式錯誤')
         print('手勢 NPU 連線就緒：Mac 18782 → 板端 8782', flush=True)
 except (OSError, WebSocketException, TimeoutError, ValueError) as error:

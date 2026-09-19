@@ -292,7 +292,6 @@ export class ThreeSceneManager {
 
   coastHeadPose(): void { this.renderPose.coast(); }
   setPosePrediction(enabled: boolean): void { this.renderPose.predictionEnabled = enabled; this.renderPose.hold(); }
-  calibratePalm(): boolean { this.gesture.clear(); return this.disconnectGesture.calibratePalm(); }
   holdHeadPose(): void { this.renderPose.hold(); }
   resetHeadPose(): void { this.renderPose.reset(); this.gesture.reset(); this.slamClutch.reset(); this.currentHeadPose = { x: .5, y: .5, z: 1 }; }
   setRenderSmoothing(enabled: boolean): void { this.renderPose.enabled = enabled; }

@@ -2,14 +2,12 @@ import type { GestureTelemetry } from '../utils/gestureSocket';
 
 const labels: Record<string, string> = { Open: '張掌', Close: '握拳', Point: '食指', None: '未偵測到手', Unknown: '手勢不確定' };
 const axes = [
-  { key: 'forward', label: '前後', positive: '前進', negative: '後退' },
+  { key: 'forward', label: '前進', positive: '前進', negative: '停止' },
   { key: 'sideways', label: '左右', positive: '右移', negative: '左移' },
   { key: 'vertical', label: '高低', positive: '升高', negative: '降低' },
-  { key: 'yaw', label: '轉向', positive: '左轉', negative: '右轉' },
-  { key: 'pitch', label: '俯仰', positive: '抬頭', negative: '低頭' },
 ] as const;
 
-export default function GesturePanel({ data, status, onCalibrate }: { data: GestureTelemetry | null; status: string; onCalibrate: () => void }) {
+export default function GesturePanel({ data, status }: { data: GestureTelemetry | null; status: string }) {
   const fresh = !!data?.accepted;
   const moving = fresh && Object.values(data.command).some(value => Math.abs(value) > 0.001);
   const backend = data?.backend === 'NPU' ? 'NPU 手部模型 · CPU 分類' : data?.backend === 'CPU' ? 'CPU 模式' : '推論裝置未回報';
@@ -30,7 +28,6 @@ export default function GesturePanel({ data, status, onCalibrate }: { data: Gest
     </div>
     <p className="text-xs text-gray-400">右側百分比為手勢分類信心</p>
     <p role="status" className={fresh ? 'text-xs text-cyan-300' : 'text-xs text-amber-300'}>{status}</p>
-    {moving && !data.handPresent && <p className="text-xs text-amber-300">延續上次方向 · 剩餘 {((data.motionHoldMs ?? 0) / 1000).toFixed(1)} 秒 · 握拳取消</p>}
     <div className="grid grid-cols-2 gap-1 text-xs">
       {axes.map(axis => {
         const value = fresh ? (data.command[axis.key] ?? 0) : 0;
@@ -41,9 +38,8 @@ export default function GesturePanel({ data, status, onCalibrate }: { data: Gest
       })}
     </div>
     {fresh && !moving && (data.gesture === 'Open' || data.gesture === 'Point') && <p className="text-xs text-gray-300">停止中，請依上方提示操作</p>}
-    <button type="button" disabled={!data?.connected} onClick={onCalibrate} className="rounded bg-cyan-800 px-3 py-2 text-xs disabled:opacity-40">掌心朝外校正（手背朝鏡頭）</button>
-    <p className="text-xs text-gray-400">校正時張掌保持不動，完成後先握拳。換手時需校正。</p>
-    <p className="text-xs text-gray-400">指尖到手腕都要入鏡。有效方向最多延續 1 秒；握拳立即停止。</p>
+    <p className="text-xs text-gray-400">張掌前進；食指指左／右平移、指上／下升降；握拳停止。不需校正。</p>
+    <p className="text-xs text-gray-400">指尖到手腕都要入鏡。收手或辨識不確定即停止；暫不提供後退與手勢旋轉。</p>
     <p className="text-xs text-gray-400 tabular-nums">推論 {data?.inferenceMs != null ? `${Math.round(data.inferenceMs)} ms` : '—'} · 資料年齡 {data ? `${Math.round(data.ageMs)} ms` : '—'}</p>
     {diagnostics && <div className="border-t border-white/15 pt-2 text-xs text-gray-300 space-y-1 tabular-nums">
       <p>{stages[diagnostics.stage] ?? '等待分段診斷'}{!fresh && '（上次結果）'}</p>

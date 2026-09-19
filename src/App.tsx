@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import ThreeView, { type ThreeViewHandle } from './components/ThreeView';
+import ThreeView from './components/ThreeView';
 import { connectPoseSocket } from './utils/poseSocket';
 import GesturePanel from './components/GesturePanel';
 import type { GestureTelemetry } from './utils/gestureSocket';
@@ -8,7 +8,6 @@ import type { HeadPose } from './utils/headPose';
 import { RemotePoseTracker } from './utils/remotePose';
 
 export default function App() {
-  const sceneView = useRef<ThreeViewHandle>(null);
   const tracker = useRef(new RemotePoseTracker(true, true, true));
   const [pose, setPose] = useState<HeadPose | null>(null);
   const [smoothing, setSmoothing] = useState(true);
@@ -39,15 +38,15 @@ export default function App() {
   }, value => setRtt(Math.round(value))), []);
 
   return <main className="h-screen w-screen relative bg-black">
-    <ThreeView ref={sceneView} onGestureTelemetry={setGestureTelemetry} onGestureStatus={setGestureStatus} headPose={scaledPose} renderSmoothing={renderSmoothing} posePrediction={posePrediction} allowCoast={allowCoast} poseEpoch={poseEpoch} />
+    <ThreeView onGestureTelemetry={setGestureTelemetry} onGestureStatus={setGestureStatus} headPose={scaledPose} renderSmoothing={renderSmoothing} posePrediction={posePrediction} allowCoast={allowCoast} poseEpoch={poseEpoch} />
     <CameraPreview />
-    <GesturePanel data={gestureTelemetry} status={gestureStatus} onCalibrate={() => sceneView.current?.calibratePalm()} />
+    <GesturePanel data={gestureTelemetry} status={gestureStatus} />
     <div className="absolute bottom-4 left-4 z-20 rounded-lg bg-black/80 p-4 text-white space-y-2">
       <h1 className="font-bold">GodEyes · 無標記 SLAM ＋手勢控制</h1>
       <p role="status">{status}</p>
       <p role="status" className="text-sm text-cyan-300">{gestureStatus}</p>
-      <p className="text-xs text-gray-300">食指指向：左右平移／升降 · 掌心朝外前進／朝鏡頭後退</p>
-      <p className="text-xs text-gray-300">張掌反向揮動轉視角 · 握拳停止 · 收手後接回 SLAM</p>
+      <p className="text-xs text-gray-300">張掌前進 · 食指指向：左右平移／升降</p>
+      <p className="text-xs text-gray-300">握拳或收手停止 · 不需校正 · 收手後接回 SLAM</p>
       <p className="text-xs text-gray-300">{estimated ? 'Mac 瀏覽器渲染 · 任意尺度，可調整虛擬位移倍率' : '邊緣裝置傳送姿態 · 本機渲染場景 · 位移與旋轉 1:1'}</p>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={smoothing} onChange={event => {

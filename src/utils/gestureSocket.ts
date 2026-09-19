@@ -4,7 +4,6 @@ export interface GestureTelemetry {
   slamClutched?: boolean;
   slamResumeWaiting?: boolean;
   handPresent: boolean;
-  motionHoldMs?: number;
   diagnostics?: {
     stage: string; palmScore: number | null; landmarkScore: number | null;
     trackingMs: number | null; classificationMs: number | null;
@@ -21,7 +20,7 @@ export interface GestureTelemetry {
 }
 const zeroCommand = (): GestureCommand => ({ forward: 0, sideways: 0, vertical: 0, yaw: 0, pitch: 0 });
 
-export type GestureConnection = (() => void) & { calibratePalm: () => boolean };
+export type GestureConnection = () => void;
 
 /** Pull one result at a time so a slow browser never replays queued motion. */
 export function connectGestureSocket(
@@ -31,7 +30,6 @@ export function connectGestureSocket(
   onTelemetry?: (data: GestureTelemetry) => void,
 ): GestureConnection {
   let stopped = false;
-  let calibrationPending = false;
   let socket: WebSocket | null = null;
   let retry: ReturnType<typeof setTimeout>;
   let timer: ReturnType<typeof setTimeout>;
@@ -64,14 +62,17 @@ export function connectGestureSocket(
       try {
         const data = JSON.parse(event.data);
         const age = data.age_ms + performance.now() - requested;
-        if (data.version !== 1 || typeof data.age_ms !== 'number' || !Number.isFinite(age) || data.age_ms < 0) throw Error('invalid packet');
+        if (data.version !== 2) {
+          halt('手勢服務版本不符，請更新並重啟板端 gesture_server');
+          pull();
+          return;
+        }
+        if (typeof data.age_ms !== 'number' || !Number.isFinite(age) || data.age_ms < 0) throw Error('invalid packet');
         clearTimeout(freshTimer);
-        if (typeof data.control_hint === 'string' && data.control_hint.startsWith('校正')) calibrationPending = false;
         const metric = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
         const diagnostics = data.diagnostics;
         telemetry = {
           handPresent: data.hand_present === true || (data.hand_present === undefined && ['Open', 'Close', 'Point', 'Unknown'].includes(data.gesture)),
-          motionHoldMs: typeof data.motion_hold_ms === 'number' && Number.isFinite(data.motion_hold_ms) ? Math.max(0, Math.min(1000, data.motion_hold_ms - (performance.now() - requested))) : 0,
           diagnostics: diagnostics && typeof diagnostics === 'object' ? {
             stage: typeof diagnostics.stage === 'string' ? diagnostics.stage : 'unknown',
             palmScore: metric(diagnostics.palm_score), landmarkScore: metric(diagnostics.landmark_score),
@@ -90,8 +91,6 @@ export function connectGestureSocket(
           halt(data.status === 'stale' ? '手勢影格過期，已停止' : '等待相機影格，已停止');
         } else if (document.hidden || !document.hasFocus()) {
           halt('頁面未啟用，手勢已停止');
-        } else if (calibrationPending) {
-          halt('等待校正開始，已停止');
         } else if (onCommand(data.command, age)) {
           telemetry.accepted = true;
           telemetry.command = { ...data.command };
@@ -126,16 +125,6 @@ export function connectGestureSocket(
     window.removeEventListener('blur', blur);
     document.removeEventListener('visibilitychange', blur);
     onStop();
-  };
-  disconnect.calibratePalm = () => {
-    if (!stopped && socket?.readyState === WebSocket.OPEN) {
-      calibrationPending = true;
-      halt('校正中：張掌，手背朝鏡頭，保持不動');
-      socket.send('calibrate_palm_out');
-      return true;
-    }
-    halt('手勢未連線，無法校正');
-    return false;
   };
   return disconnect;
 }

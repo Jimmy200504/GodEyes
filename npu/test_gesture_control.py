@@ -17,19 +17,6 @@ def hand(cx=320, cy=240, facing=1, direction=(0, -60)):
     return points
 
 
-def update(gate, gesture, points, now, confidence=.95, handedness=.95):
-    return gate.update(gesture, confidence, points, handedness=handedness, now=now)
-
-
-def calibrate(gate):
-    gate.begin_calibration()
-    for now in (0., .1, .2, .4):
-        assert update(gate, 'Open', hand(), now) == STOP
-    assert not gate.calibrating
-    assert update(gate, 'Open', hand(), .45) == STOP
-    update(gate, 'Close', hand(), .5)
-
-
 class ControlTests(unittest.TestCase):
     def test_detected_hand_with_invalid_classification_still_holds_slam(self):
         import numpy as np
@@ -50,56 +37,32 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(pointing_command(hand(direction=(60, 60))), STOP)
         self.assertEqual(pointing_command(hand(direction=(0, 0))), STOP)
 
-    def test_calibration_is_required_and_finishing_it_never_moves(self):
+    def test_open_always_moves_forward_without_facing_or_motion_history(self):
         gate = GestureGate()
-        for now in (0., .1, .2, .4, .6, .8):
-            self.assertEqual(update(gate, 'Open', hand(), now), STOP)
-        calibrate(gate)
-        for now in (.6, .8, 1., 1.15, 1.25, 1.35):
-            command = update(gate, 'Open', hand(), now)
-        self.assertEqual(command, dict(STOP, forward=1))
-        update(gate, 'Close', hand(), 1.4)
-        for now in (1.5, 1.7, 1.9, 2.05, 2.15, 2.25):
-            command = update(gate, 'Open', hand(facing=-1), now)
-        self.assertEqual(command, dict(STOP, forward=-1))
-        self.assertEqual(update(gate, 'Close', hand(), 2.3), STOP)
-        self.assertEqual(update(gate, 'Open', hand(), 2.4, handedness=.05), STOP)
-        self.assertEqual(update(gate, 'Open', hand(), 2.5, handedness=.5), STOP)
+        for facing in (1, -1):
+            for center in ((320, 240), (326, 240), (400, 200), (100, 100)):
+                self.assertEqual(gate.update('Open', .95, hand(*center, facing=facing)),
+                                 dict(STOP, forward=1))
+                self.assertEqual(gate.hint, '張掌：前進')
+        self.assertEqual(gate.update('Close', .95, hand()), STOP)
+        self.assertEqual(gate.update('Open', .95, hand()), dict(STOP, forward=1))
 
-    def test_calibration_rejects_motion_and_uncertain_handedness(self):
+    def test_switching_static_gestures_replaces_direction_immediately(self):
         gate = GestureGate()
-        gate.begin_calibration()
-        for i in range(8):
-            update(gate, 'Open', hand(cx=100 + 30 * i), i * .1)
-        self.assertTrue(gate.calibrating)
-        for i in range(8, 16):
-            update(gate, 'Open', hand(), i * .1, handedness=.5)
-        self.assertTrue(gate.calibrating)
-        self.assertEqual(gate.outward, {})
+        self.assertEqual(gate.update('Open', .95, hand()), dict(STOP, forward=1))
+        self.assertEqual(gate.update('Point', .95, hand(direction=(60, 0))), dict(STOP, sideways=1))
+        self.assertEqual(gate.update('Point', .95, hand(direction=(60, 60))), STOP)
+        self.assertEqual(gate.update('Point', .95, hand(direction=(-60, 0))), dict(STOP, sideways=-1))
+        self.assertEqual(gate.update('Close', .1, None), STOP)
 
-    def test_swipes_use_requested_inverse_rotation_and_do_not_translate(self):
-        for delta, axis, sign in [((-35, 0), 'yaw', -1), ((35, 0), 'yaw', 1), ((0, -35), 'pitch', -1), ((0, 35), 'pitch', 1)]:
-            gate = GestureGate()
-            calibrate(gate)
-            update(gate, 'Open', hand(), 1.)
-            command = update(gate, 'Open', hand(cx=320 + delta[0], cy=240 + delta[1]), 1.1)
-            self.assertGreater(command[axis] * sign, 0)
-            self.assertEqual(command['forward'], 0)
-            self.assertEqual(command['sideways'], 0)
-            self.assertEqual(command['vertical'], 0)
-            # Holding still after a swipe must not turn into forward movement.
-            for now in (1.2, 1.3, 1.4):
-                self.assertEqual(update(gate, 'Open', hand(cx=320 + delta[0], cy=240 + delta[1]), now), STOP)
-            self.assertEqual(update(gate, 'Close', hand(), 1.5), STOP)
-
-    def test_invalid_lost_low_confidence_and_long_gaps_stop(self):
+    def test_invalid_lost_and_low_confidence_stop(self):
         gate = GestureGate()
-        points = hand(direction=(60, 0))
-        update(gate, 'Point', points, 0.)
-        self.assertEqual(update(gate, 'Point', points, .1)['sideways'], 1)
-        for gesture, confidence, points in [('None', 0, None), ('Unknown', .5, hand()), ('Point', math.nan, hand()), ('Point', .9, [[0, 0]] * 21)]:
-            self.assertEqual(update(gate, gesture, points, .2, confidence), STOP)
-        self.assertEqual(update(gate, 'Point', hand(direction=(60, 0)), 1.), dict(STOP, sideways=1))
+        for gesture, confidence, points in [
+                ('None', 0, None), ('Unknown', .5, hand()), ('Open', .74, hand()),
+                ('Point', math.nan, hand()), ('Point', .9, [[0, 0]] * 21),
+                ('Open', 1.1, hand()), ('Open', .9, [[math.inf, 0]] * 21)]:
+            gate.update('Open', .95, hand())
+            self.assertEqual(gate.update(gesture, confidence, points), STOP)
 
     def test_classification_is_rotation_invariant_but_control_keeps_original_direction(self):
         import numpy as np
@@ -110,32 +73,23 @@ class ControlTests(unittest.TestCase):
             turned = (points - points[0]) @ rotation.T + points[0]
             np.testing.assert_allclose(classifier_landmarks(turned), canonical, atol=1e-10)
         gate = GestureGate()
-        self.assertEqual(update(gate, 'Point', hand(), 0.), dict(STOP, vertical=1))
-        self.assertEqual(update(gate, 'Point', hand(direction=(0, 60)), .1), dict(STOP, vertical=-1))
+        self.assertEqual(gate.update('Point', .95, hand()), dict(STOP, vertical=1))
+        self.assertEqual(gate.update('Point', .95, hand(direction=(0, 60))), dict(STOP, vertical=-1))
 
-    def test_one_second_hold_survives_missing_detections_without_renewal(self):
+    def test_stop_loss_and_uncertain_results_never_continue_previous_motion(self):
         latest = LatestGesture()
-        latest.put('Point', dict(STOP, vertical=1), 10.)
-        for now in (10.2, 10.5, 10.9):
-            latest.put('None', STOP, now)
-            with patch('gesture_server.time.monotonic', return_value=now):
+        for gesture in ('Open', 'Point', 'Close', 'None', 'Unknown'):
+            latest.put('Point', dict(STOP, vertical=1), 10.)
+            latest.put(gesture, STOP, 10.1)
+            with patch('gesture_server.time.monotonic', return_value=10.1):
                 packet = latest.get()
-                self.assertEqual(packet['gesture'], 'None')
-                self.assertEqual(packet['command']['vertical'], 1)
-                self.assertEqual(packet['motion_hold_ms'], round((11-now)*1000))
-                self.assertIn('延續', packet['control_hint'])
-        latest.put('None', STOP, 11.)
-        with patch('gesture_server.time.monotonic', return_value=11.):
-            self.assertEqual(latest.get()['command'], STOP)
-        # A fresh opposite direction replaces the old one immediately.
-        latest.put('Point', dict(STOP, vertical=1), 12.)
-        latest.put('Point', dict(STOP, vertical=-1), 12.1)
-        with patch('gesture_server.time.monotonic', return_value=12.1):
-            self.assertEqual(latest.get()['command']['vertical'], -1)
-        for kwargs in ({'gesture': 'Close'}, {'cancel_motion': True}, {'status': 'error'}):
-            latest.put('Point', dict(STOP, vertical=1), 13.)
-            latest.put(command=STOP, captured=13.1, **dict({'gesture': 'None'}, **kwargs))
-            with patch('gesture_server.time.monotonic', return_value=13.1):
+                self.assertEqual(packet['gesture'], gesture)
+                self.assertEqual(packet['command'], STOP)
+                self.assertEqual(packet['motion_hold_ms'], 0)
+        for kwargs in ({'gesture': 'Close'}, {'status': 'error'}):
+            latest.put(command=dict(STOP, vertical=1), captured=10.1,
+                       **dict({'gesture': 'Point'}, **kwargs))
+            with patch('gesture_server.time.monotonic', return_value=10.1):
                 self.assertEqual(latest.get()['command'], STOP)
 
     def test_stale_diagnostics_keep_detection_but_stop_commands(self):

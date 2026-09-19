@@ -15,22 +15,21 @@ sys.path.insert(0, str(ROOT / 'pose'))
 sys.path.insert(0, str(ROOT / 'npu' / 'references' / 'gesture'))
 sys.path.insert(0, str(ROOT / 'npu'))
 
-from gesture_control import GestureGate, MotionPulse, STOP  # noqa: E402
+from gesture_control import GestureGate, STOP  # noqa: E402
 
 
 class LatestGesture:
     def __init__(self, backend='unknown'):
-        self.calibration_requested = threading.Event()
         self.backend = backend
         self.lock = threading.Lock()
         self.packet = None
-        self.pulse = MotionPulse()
         self.captured = 0.0
 
-    def put(self, gesture, command, captured, status='tracking', confidence=None, inference_ms=None, control_hint=None, hand_present=False, cancel_motion=False, diagnostics=None):
+    def put(self, gesture, command, captured, status='tracking', confidence=None, inference_ms=None, control_hint=None, hand_present=False, diagnostics=None):
         with self.lock:
-            self.pulse.update(command, captured, cancel=cancel_motion or gesture == 'Close' or status != 'tracking')
-            self.packet = dict(version=1, gesture=gesture, command=command, status=status,
+            if gesture in ('Close', 'None', 'Unknown') or status != 'tracking':
+                command = dict(STOP)
+            self.packet = dict(version=2, gesture=gesture, command=command, status=status,
                                backend=self.backend, confidence=confidence, inference_ms=inference_ms, control_hint=control_hint, hand_present=hand_present, diagnostics=diagnostics)
             self.captured = captured
 
@@ -38,15 +37,11 @@ class LatestGesture:
         with self.lock:
             age = (time.monotonic() - self.captured) * 1000
             if self.packet is None:
-                return dict(version=1, gesture='None', command=dict(STOP), age_ms=0.0,
+                return dict(version=2, gesture='None', command=dict(STOP), age_ms=0.0,
                             status='waiting', backend=self.backend, confidence=None, inference_ms=None)
             if age >= 250:
                 return dict(self.packet, command=dict(STOP), motion_hold_ms=0, age_ms=max(0.0, age), status='stale')
-            command, remaining = self.pulse.get(time.monotonic())
-            hint = self.packet.get('control_hint')
-            if remaining and not any(self.packet['command'].values()):
-                hint = f'延續上次方向，剩餘 {remaining} ms；握拳取消'
-            return dict(self.packet, command=command, motion_hold_ms=remaining, control_hint=hint, age_ms=max(0.0, age))
+            return dict(self.packet, motion_hold_ms=0, age_ms=max(0.0, age))
 
 
 def load_models(cpu=False):
@@ -126,7 +121,6 @@ def inference_loop(args, tracker, classifier, latest, stop):
                     if key == last_key:
                         continue
                     if time.monotonic() - captured >= .25:
-                        gate.reset_motion()
                         latest.put('None', dict(STOP), time.monotonic(), status='stale')
                         continue
                     last_key = key
@@ -134,27 +128,20 @@ def inference_loop(args, tracker, classifier, latest, stop):
                     if frame is None or frame.shape[:2] != (480, 640):
                         raise ValueError('invalid camera JPEG')
                     inference_started = time.monotonic()
-                    gesture, confidence, landmarks, handedness = infer_frame(frame, tracker, classifier)
+                    gesture, confidence, landmarks, _ = infer_frame(frame, tracker, classifier)
                     inference_ms = (time.monotonic() - inference_started) * 1000
                     diagnostics = dict(getattr(tracker, 'diagnostics', {}),
                                        frame_roundtrip_ms=round((received-requested)*1000, 2),
                                        source_age_ms=round(meta['age_ns']/1e6, 2),
                                        decode_ms=round((inference_started-received)*1000, 2))
-                    if latest.calibration_requested.is_set():
-                        latest.calibration_requested.clear()
-                        gate.begin_calibration()
-                    command = gate.update(gesture, confidence, landmarks, args.mirror,
-                                          handedness=handedness, now=meta['capture_ns'] / 1e9)
+                    command = gate.update(gesture, confidence, landmarks, args.mirror)
                     if confidence < .75 and gesture != 'None':
                         gesture = 'Unknown'
-                    if time.monotonic() - captured >= .25:
-                        gate.reset_motion()
                     latest.put(gesture, command, captured, confidence=confidence if gesture != 'None' else None,
                                inference_ms=round(inference_ms, 2), control_hint=gate.hint, hand_present=landmarks is not None,
-                               cancel_motion=gate.calibrating or gate.await_release, diagnostics=diagnostics)
+                               diagnostics=diagnostics)
         except Exception as error:
             latest.put('None', dict(STOP), time.monotonic(), status='error')
-            gate.reset_motion()
             print(f'Gesture input stopped: {error}', file=sys.stderr, flush=True)
             stop.wait(.5)
 
@@ -170,15 +157,8 @@ def make_server(latest, host, port):
         try:
             while True:
                 message = connection.recv(timeout=30)
-                if message == 'calibrate_palm_out':
-                    with latest.lock:
-                        latest.pulse.clear()
-                        if latest.packet is not None:
-                            latest.packet = dict(latest.packet, command=dict(STOP))
-                    latest.calibration_requested.set()
-                    continue
                 if message != 'next':
-                    connection.close(1008, 'expected next or calibrate_palm_out')
+                    connection.close(1008, 'expected next')
                     return
                 # Limit polling to 30 Hz; inference runs once for all viewers.
                 time.sleep(1 / 30)

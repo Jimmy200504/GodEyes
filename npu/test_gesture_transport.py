@@ -11,7 +11,7 @@ from gesture_server import LatestGesture, make_server
 
 
 class TransportTests(unittest.TestCase):
-    def test_pull_rotation_expiry_and_invalid_requests(self):
+    def test_pull_translation_stop_expiry_and_invalid_requests(self):
         latest = LatestGesture()
         with make_server(latest, '127.0.0.1', 0) as server:
             port = server.socket.getsockname()[1]
@@ -19,26 +19,22 @@ class TransportTests(unittest.TestCase):
             thread.start()
             try:
                 with connect(f'ws://127.0.0.1:{port}/api/gesture/ws') as socket:
-                    socket.send('calibrate_palm_out')
-                    socket.send('next')
-                    self.assertEqual(json.loads(socket.recv(timeout=2))['command'], STOP)
-                    self.assertTrue(latest.calibration_requested.is_set())
-                    latest.put('Point', dict(STOP, yaw=-1), time.monotonic())
+                    latest.put('Point', dict(STOP, sideways=-1), time.monotonic())
                     socket.send('next')
                     packet = json.loads(socket.recv(timeout=2))
-                    self.assertEqual(packet['command']['yaw'], -1)
+                    self.assertEqual(packet['command']['sideways'], -1)
                     self.assertEqual(packet['status'], 'tracking')
-                    self.assertTrue(latest.calibration_requested.is_set())
+                    self.assertEqual(packet['version'], 2)
                     latest.put('None', STOP, time.monotonic())
                     socket.send('next')
                     packet = json.loads(socket.recv(timeout=2))
                     self.assertEqual(packet['gesture'], 'None')
-                    self.assertEqual(packet['command']['yaw'], -1)
-                    self.assertGreater(packet['motion_hold_ms'], 0)
+                    self.assertEqual(packet['command'], STOP)
+                    self.assertEqual(packet['motion_hold_ms'], 0)
                     latest.put('Close', STOP, time.monotonic())
                     socket.send('next')
                     self.assertEqual(json.loads(socket.recv(timeout=2))['command'], STOP)
-                    latest.put('Point', dict(STOP, yaw=-1), time.monotonic() - 1)
+                    latest.put('Point', dict(STOP, sideways=-1), time.monotonic() - 1)
                     socket.send('next')
                     packet = json.loads(socket.recv(timeout=2))
                     self.assertEqual(packet['command'], STOP)
