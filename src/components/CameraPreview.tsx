@@ -39,7 +39,7 @@ export default function CameraPreview() {
       } catch { if (!stopped) setOffline(true); }
       finally {
         clearTimeout(timeout);
-        if (!stopped) imageTimer = setTimeout(frames, 33);
+        if (!stopped) imageTimer = setTimeout(frames, 100);
       }
     };
     const states = async () => {

@@ -40,7 +40,7 @@ export default function App() {
         }
       } finally {
         clearTimeout(timeout);
-        if (!stopped) timer = setTimeout(poll, 33);
+        if (!stopped) timer = setTimeout(poll, Math.max(0, 33 - (performance.now() - started)));
       }
     };
     void poll();

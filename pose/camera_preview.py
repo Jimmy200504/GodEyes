@@ -24,7 +24,7 @@ document.getElementById('render').href=location.protocol+'//'+location.hostname+
 document.getElementById('full').onclick=()=>im.requestFullscreen?.();
 async function frame(){try{const r=await fetch('/frame.jpg',{cache:'no-store',signal:AbortSignal.timeout(2000)});
 if(!r.ok)throw Error();const u=URL.createObjectURL(await r.blob()),old=im.src;im.src=u;
-if(old.startsWith('blob:'))URL.revokeObjectURL(old);}catch{st.textContent='鏡頭畫面暫時無法取得';}setTimeout(frame,33);}
+if(old.startsWith('blob:'))URL.revokeObjectURL(old);}catch{st.textContent='鏡頭畫面暫時無法取得';}setTimeout(frame,100);}
 async function status(){try{const r=await fetch('/status',{cache:'no-store',signal:AbortSignal.timeout(2000)}),s=await r.json();
 const fresh=s.age_ms!==null&&s.age_ms<1000;
 st.textContent=s.error?'相機錯誤：'+s.error:!fresh?'等待新影格…':s.found?'已偵測到定位標記':'尚未偵測到 B，請調整相機／手機方向';
@@ -37,10 +37,11 @@ document.getElementById('pose-status').textContent=s.pose_tracking==='tracking'?
 
 
 class Camera:
-    def __init__(self, device, pipeline, sender):
+    def __init__(self, device, pipeline, sender, preview_width=320):
         self.pipeline = pipeline
         self.sender = sender
         self.device = device
+        self.preview_width = preview_width
         self.lock = threading.Lock()
         self.stop = threading.Event()
         self.jpg = None
@@ -94,7 +95,12 @@ class Camera:
                 cv2.putText(frame, 'Seen: ' + ','.join(map(str,seen_targets)) if found else 'Looking for board markers',
                     (12,30), cv2.FONT_HERSHEY_SIMPLEX, .65, (0,255,0) if found else (0,190,255), 2)
                 drawn = time.monotonic()
-                ok, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY,80])
+                preview = frame
+                if self.preview_width < frame.shape[1]:
+                    preview = cv2.resize(frame, (self.preview_width,
+                        round(frame.shape[0] * self.preview_width / frame.shape[1])),
+                        interpolation=cv2.INTER_AREA)
+                ok, jpeg = cv2.imencode('.jpg', preview, [cv2.IMWRITE_JPEG_QUALITY,75])
                 if not ok:
                     continue
                 now = time.monotonic()
@@ -107,7 +113,8 @@ class Camera:
                     self.jpg = jpeg.tobytes()
                     self.updated = now
                     self.state = dict(found=found,ids=values,fps=round(fps,1),width=frame.shape[1],
-                        height=frame.shape[0],min_side_px=shortest,error=None,
+                        height=frame.shape[0],preview_width=preview.shape[1],
+                        preview_height=preview.shape[0],min_side_px=shortest,error=None,
                         pose_tracking=packet['tracking'], pose_reason=packet['tracking_reason'],
                         used_ids=packet['used_ids'], target_ids=packet['target_ids'],
                         scale=packet['scale'], position=packet['position'],
@@ -155,6 +162,8 @@ if __name__ == '__main__':
     parser.add_argument('--camera',default='/dev/video2')
     parser.add_argument('--host',default='127.0.0.1')
     parser.add_argument('--port',type=int,default=8766)
+    parser.add_argument('--preview-width', type=int, choices=(320, 640), default=320,
+        help='preview JPEG width; detection always uses 640x480')
     parser.add_argument('--board', help='fixed board layout JSON; scaled by --marker-m')
     parser.add_argument('--calibration', help='camera.json from real calibration')
     parser.add_argument('--approximate', action='store_true', help='rough demo intrinsics; NOT calibrated metric tracking')
@@ -163,7 +172,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     pipeline = PosePipeline(args.marker_m, args.calibration, args.approximate, args.board)
     sender = LatestSender(args.url)
-    camera = Camera(int(args.camera) if args.camera.isdecimal() else args.camera, pipeline, sender)
+    camera = Camera(int(args.camera) if args.camera.isdecimal() else args.camera, pipeline, sender, args.preview_width)
     server = make_server(camera,args.host,args.port)
     print(f'Camera preview http://{args.host}:{args.port}',flush=True)
     try:
