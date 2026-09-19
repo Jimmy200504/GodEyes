@@ -72,9 +72,10 @@ export default function CameraPreview() {
   const reason = !fresh ? '影像連線中斷／等待更新' : tracking ? '自然特徵定位中' :
     status?.pose_tracking === 'initializing' ? '請朝有紋理的環境緩慢側移，建立地圖' : '追蹤中斷：轉回已建圖區域，或重建地圖';
 
-  return <aside className="absolute bottom-4 right-4 z-30 w-80 max-w-[44vw] overflow-hidden rounded-lg border border-white/20 bg-black/85 text-white shadow-xl">
-    <div className="flex justify-between px-3 py-2 text-xs">
-      <span>相機即時預覽</span><span>{status?.fps?.toFixed(1) ?? '—'} FPS（處理）</span>
+  return <aside className="case-note case-note-camera">
+    <span className="note-pin" aria-hidden="true" />
+    <div className="note-camera-heading">
+      <h2>相機畫面</h2><span>{status?.fps?.toFixed(1) ?? '—'} FPS</span>
     </div>
     <img ref={image} alt="Logitech 相機即時畫面與自然特徵" className="aspect-[4/3] w-full bg-black object-contain" />
     <div className="space-y-1 px-3 py-2 text-xs" role="status">

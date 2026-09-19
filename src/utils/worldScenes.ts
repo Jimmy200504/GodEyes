@@ -26,21 +26,21 @@ export interface WorldScene {
 }
 export const WORLD_SCENES: WorldScene[] = [
   {
-    id: "bright-truvia",
-    name: "Bright Truvia",
-    description: "人行道、街角與樹蔭。走進照片之外的空間。",
-    source: "preset",
-    thumbnail: "/scenes/previews/bright-truvia.webp",
-    spzUrl: "/scenes/bright-truvia-full-res.spz",
-    status: "ready",
-  },
-  {
     id: "shared-scene-v2",
-    name: "Shared Scene v2",
-    description: "桌面、物件與室內格局。從不同角度重新觀察。",
+    name: "看不見的手機",
+    description: "三個人都來過辦公室。誰站的位置，真的看得到桌上的手機？",
     source: "preset",
     thumbnail: "/scenes/previews/shared-scene-v2.webp",
     spzUrl: "/scenes/shared-scene-v2-full-res.spz",
+    status: "ready",
+  },
+  {
+    id: "bright-truvia",
+    name: "Bright 與 Truvia 案",
+    description: "一扇窗外的視線，牽涉兩人逾 27 年的冤獄。依案件製作的空間示意。",
+    source: "preset",
+    thumbnail: "/scenes/previews/bright-truvia.webp",
+    spzUrl: "/scenes/bright-truvia-full-res.spz",
     status: "ready",
   },
 ];

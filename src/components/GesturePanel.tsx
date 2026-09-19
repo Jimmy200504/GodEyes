@@ -15,10 +15,11 @@ export default function GesturePanel({ data, status }: { data: GestureTelemetry 
   const ms = (value: number | null) => value == null ? '—' : `${Math.round(value)} ms`;
   const score = (value: number | null) => value == null ? '—' : `${Math.round(value * 100)}%`;
   const stages: Record<string, string> = { no_palm: '手掌未通過', landmark_rejected: '已找到手掌，骨架未通過', tracking: '骨架已通過，送入分類' };
-  return <aside aria-label="手勢偵測結果" className="absolute top-4 right-4 z-30 w-80 max-w-[90vw] max-h-[45vh] overflow-y-auto rounded-lg border border-cyan-400/30 bg-black/85 p-3 text-white shadow-xl space-y-2">
+  return <aside aria-label="手勢偵測結果" className="case-note case-note-gesture space-y-2">
+    <span className="note-pin" aria-hidden="true" />
     <div className="flex items-center justify-between gap-2">
       <h2 className="text-sm font-bold">手勢偵測</h2>
-      <span className={data?.connected ? 'text-xs text-cyan-300' : 'text-xs text-amber-300'}>{data?.connected ? 'Socket 已連線' : '等待連線'}</span>
+      <span className={data?.connected ? 'text-xs text-cyan-300' : 'text-xs text-amber-300'}>{data?.connected ? '已連線' : '等待連線'}</span>
     </div>
     <p className="text-xs text-gray-400">{backend}</p>
     <p className="text-xs text-cyan-300">{data?.slamClutched ? '手勢控制中 · SLAM 畫面更新暫停' : data?.slamResumeWaiting ? '等待新 SLAM 姿態接續' : 'SLAM 頭部控制'}</p>

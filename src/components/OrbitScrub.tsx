@@ -207,48 +207,22 @@ export default function OrbitScrub(): JSX.Element {
   const count = manifest?.frames.length ?? 0;
   const step = Math.min(STEPS.length - 1, Math.floor(index / ROW));
   const current = STEPS[step];
-  const preloading = count > 0 && loaded < count;
 
   return (
     <section className="orbit" id="orbit" ref={sectionRef}>
       <div className="orbit-pin">
         <div className="orbit-grid">
           <div className="orbit-side">
-            <span className="tag tag-invert">02</span>
             <h2>
-              <span>預算視角</span> <span>ORBIT</span>
+              <span>換個角度看現場</span>
             </h2>
             <p className="orbit-lead">
-              捲動即可繞著現場移動視角。畫面用 1-bit 抖色呈現，看見的是真正的
-              splat 重建，不是示意動畫。
+              往下捲動，從不同角度觀察建築與街道。
             </p>
-            <dl className="orbit-stats">
-              <div>
-                <dt>YAW</dt>
-                <dd>{frame ? `${frame.yaw > 0 ? "+" : ""}${frame.yaw}°` : "—"}</dd>
-              </div>
-              <div>
-                <dt>PITCH</dt>
-                <dd>
-                  {frame ? `${frame.pitch > 0 ? "+" : ""}${frame.pitch}°` : "—"}
-                </dd>
-              </div>
-              <div>
-                <dt>FRAME</dt>
-                <dd>
-                  {String(index + 1).padStart(2, "0")}/{count || "—"}
-                </dd>
-              </div>
-              <div>
-                <dt>SOURCE</dt>
-                <dd>{preloading ? `LOADING ${loaded}/${count}` : "SPLAT · 960×540"}</dd>
-              </div>
-            </dl>
           </div>
 
           <div className="orbit-main">
             <div className="orbit-screen">
-              <span className="orbit-step">{current.id}</span>
               <canvas
                 ref={canvasRef}
                 className="orbit-canvas"
@@ -261,7 +235,7 @@ export default function OrbitScrub(): JSX.Element {
               />
               {failed && (
                 <p className="orbit-fallback" role="status">
-                  預算視角資產無法載入。現場資料庫不受影響。
+                  場景預覽無法載入，仍可從下方選擇現場。
                 </p>
               )}
             </div>
@@ -281,7 +255,6 @@ export default function OrbitScrub(): JSX.Element {
             </div>
 
             <div className="orbit-caption">
-              <span className="tag tag-invert">{current.label}</span>
               <div>
                 <h3>{current.title}</h3>
                 <p>{current.body}</p>

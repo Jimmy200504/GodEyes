@@ -1,3 +1,4 @@
+import { ArrowLeft, RotateCcw, NotebookPen } from 'lucide-react';
 import type { WorldScene } from '../utils/worldScenes';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ThreeView from './ThreeView';
@@ -9,6 +10,7 @@ import type { HeadPose } from '../utils/headPose';
 import { RemotePoseTracker } from '../utils/remotePose';
 
 export default function RemoteExplorer({ scene, onBack }: { scene: WorldScene; onBack: () => void }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const tracker = useRef(new RemotePoseTracker(true, true, true));
   const [pose, setPose] = useState<HeadPose | null>(null);
   const [smoothing, setSmoothing] = useState(true);
@@ -38,40 +40,49 @@ export default function RemoteExplorer({ scene, onBack }: { scene: WorldScene; o
     setStatus(message);
   }, value => setRtt(Math.round(value))), []);
 
-  return <main className="h-screen w-screen relative bg-black">
+  return <main className="scene-explorer">
     <ThreeView scene={scene} mode="remote" onGestureTelemetry={setGestureTelemetry} onGestureStatus={setGestureStatus} headPose={scaledPose} renderSmoothing={renderSmoothing} posePrediction={posePrediction} allowCoast={allowCoast} poseEpoch={poseEpoch} />
-    <CameraPreview />
-    <GesturePanel data={gestureTelemetry} status={gestureStatus} />
-    <div className="absolute bottom-4 left-4 z-20 rounded-lg bg-black/80 p-4 text-white space-y-2">
-      <button className="rounded bg-gray-700 px-3 py-2" onClick={onBack}>返回一般探索</button>
-      <h1 className="font-bold">GodEyes · 無標記 SLAM ＋手勢控制</h1>
-      <p role="status">{status}</p>
-      <p role="status" className="text-sm text-cyan-300">{gestureStatus}</p>
-      <p className="text-xs text-gray-300">張掌前進 · 食指指向：左右平移／升降</p>
-      <p className="text-xs text-gray-300">握拳或收手停止 · 不需校正 · 收手後接回 SLAM</p>
-      <p className="text-xs text-gray-300">{estimated ? 'Mac 瀏覽器渲染 · 任意尺度，可調整虛擬位移倍率' : '邊緣裝置傳送姿態 · 本機渲染場景 · 位移與旋轉 1:1'}</p>
+    <nav className="scene-toolbar" aria-label="場景控制">
+      <button onClick={onBack}><ArrowLeft size={17} aria-hidden="true" />返回</button>
+      <button onClick={() => { tracker.current.reset(); setAllowCoast(false); setPose(null); setPoseEpoch(value => value + 1); }}>
+        <RotateCcw size={16} aria-hidden="true" />Reset
+      </button>
+      <button aria-expanded={detailsOpen} aria-controls="scene-details" onClick={() => setDetailsOpen(open => !open)}>
+        <NotebookPen size={17} aria-hidden="true" />詳細資訊
+      </button>
+    </nav>
+    {detailsOpen && <section id="scene-details" className="case-board" aria-label="現場筆記" onKeyDown={event => { if (event.key === 'Escape') setDetailsOpen(false); }}>
+    <div className="case-board-notes">
+    <section className="case-note case-note-settings">
+      <span className="note-pin" aria-hidden="true" />
+      <h2>{scene.name}</h2>
+      <p role="status" className="note-status">{status}</p>
+      <p className="text-xs text-gray-300">張掌前進，食指控制左右與高低。</p>
+      <p className="text-xs text-gray-300">握拳或收手停止，收手後接回頭部追蹤。</p>
+      <p className="text-xs text-gray-300">{estimated ? '目前使用相對尺度，可調整下方位移倍率。' : '姿態與位移依裝置回傳資料更新。'}</p>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={smoothing} onChange={event => {
           setSmoothing(event.target.checked);
           tracker.current.setSmoothing(event.target.checked);
         }} />
-        姿態防抖（減少細微抖動，會增加些微延遲）
+        姿態防抖
       </label>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={renderSmoothing} onChange={event => setRenderSmoothing(event.target.checked)} />
-        畫面平滑（逐畫面更新）
+        畫面平滑
       </label>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={posePrediction} onChange={event => setPosePrediction(event.target.checked)} />
-        實驗：旋轉外推（最多 100 ms，可能猜錯）
+        旋轉預測（實驗功能）
       </label>
       {posePrediction && <p className="text-xs text-amber-300">畫面可含短暫預測；上方狀態仍是真實追蹤結果，lost 不代表已恢復。</p>}
       <p className="text-xs text-gray-400">WebSocket · 往返約 {rtt} ms</p>
       <label className="block text-sm">位移倍率 {gain}× <input aria-label="位移倍率" type="range" min="0" max="30" step="0.5" value={gain} onChange={e => setGain(Number(e.target.value))} /></label>
       <p className="text-xs text-gray-400">緩慢側移初始化 · 不需要 ArUco · 尚無閉環校正</p>
-      <button className="rounded bg-blue-600 px-3 py-2" onClick={() => { tracker.current.reset(); setAllowCoast(false); setPose(null); setPoseEpoch(value => value + 1); }}>
-        重設位置與正前方
-      </button>
+    </section>
+    <CameraPreview />
+    <GesturePanel data={gestureTelemetry} status={gestureStatus} />
     </div>
+    </section>}
   </main>;
 }

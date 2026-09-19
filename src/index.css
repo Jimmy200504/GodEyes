@@ -1737,3 +1737,44 @@ textarea:focus {
     height: auto;
   }
 }
+
+/* Scene controls and pinned case notes. */
+.scene-explorer { position: relative; width: 100%; height: 100dvh; overflow: hidden; background: #141614; }
+.scene-toolbar { position: absolute; z-index: 50; left: 24px; bottom: max(24px, env(safe-area-inset-bottom)); display: flex; gap: 6px; padding: 6px; border: 1px solid #d6c9ac; border-radius: 9px; background: #eee7d7f5; box-shadow: 0 6px 24px #0004, inset 0 1px #fff9; }
+.scene-toolbar button { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 42px; padding: 0 16px; border: 0; border-radius: 5px; color: #3e382e; font-size: 13px; font-weight: 600; transition: background .15s, color .15s; }
+.scene-toolbar button:hover { background: #ded3be; }
+.scene-toolbar button[aria-expanded="true"] { background: #743a32; color: #fff4df; }
+.scene-toolbar button:focus-visible, .case-board button:focus-visible, .case-board input:focus-visible { outline: 2px solid #984c3e; outline-offset: 3px; }
+.case-board { position: absolute; z-index: 40; inset: 0; pointer-events: none; color: #38382e; }
+.case-board-notes { display: contents; }
+.case-note { position: absolute; width: 285px; max-width: calc(50vw - 36px); min-width: 0; padding: 38px 18px 18px; overflow: auto; overscroll-behavior: contain; pointer-events: auto; scrollbar-width: thin; scrollbar-color: #ad9b78 transparent; border: 1px solid #a9976630; background: #f8eab3; box-shadow: 2px 5px 8px #49372124, 0 1px 1px #49372124; color: #474335; font-size: 12px; line-height: 1.75; }
+.case-note h2 { margin: 0 0 12px; color: #363326; font-size: 17px; font-weight: 700; letter-spacing: .04em; }
+.note-pin { position: absolute; top: 7px; left: calc(50% - 10px); width: 21px; height: 13px; z-index: 2; border: 1px solid #69251d; border-radius: 50%; transform: rotate(-24deg); background: radial-gradient(ellipse at 32% 22%, #ffe1cd 0, #e89178 12%, #b84833 35%, #822b20 70%, #481b17 100%); box-shadow: inset 0 1px 1px #fff9, inset 0 -2px 2px #4b171b99, 2px 3px 0 #6c2b23, 5px 10px 5px #39231855; }
+.note-pin::before { content: ""; position: absolute; left: 7px; top: 9px; width: 7px; height: 9px; z-index: -1; border-radius: 1px 1px 3px 3px; background: linear-gradient(90deg, #5a221c, #d2755f 40%, #9e4230 65%, #53211c); box-shadow: 2px 2px 2px #38231b44; }
+.note-pin::after { content: ""; position: absolute; left: 9px; top: 17px; width: 3px; height: 9px; z-index: -2; border-radius: 0 0 60% 50%; transform: skewX(-12deg); background: linear-gradient(90deg, #555451, #f0efe7 48%, #76766e); box-shadow: 2px 2px 1px #30231c55; }
+.case-note-settings { left: 24px; bottom: 98px; max-height: calc(100dvh - 140px); transform: rotate(-.8deg); background: repeating-linear-gradient(transparent 0 29px, #a08a4820 29px 30px), #f6e7ae; }
+.case-note-settings p { margin-bottom: 9px; }
+.case-note-settings label { margin: 11px 0; }
+.case-note-settings input[type="checkbox"] { accent-color: #7c4235; width: 15px; height: 15px; }
+.case-note-settings input[type="range"] { display: block; width: 100%; margin-top: 12px; accent-color: #7c4235; }
+.case-note .note-status { padding: 9px 0; border-bottom: 1px solid #97845255; font-weight: 600; }
+.case-note-camera { right: 24px; bottom: 24px; max-height: calc(48dvh - 36px); padding: 37px 12px 15px; transform: rotate(1deg); background: #faf7ee; }
+.note-camera-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 0 5px; }
+.note-camera-heading h2 { font-size: 15px; }
+.note-camera-heading > span { font-size: 10px; color: #746d5c; }
+.case-note-camera img { border: 1px solid #c9c2b4; background: #252b28; }
+.case-note-camera button { margin-top: 8px; border-bottom: 1px solid currentColor; }
+.case-note-gesture { right: 24px; top: 24px; max-height: calc(48dvh - 24px); transform: rotate(.5deg); background: #e7ecda; }
+.case-note :is(.text-gray-300, .text-gray-400) { color: #6a6657; }
+.case-note :is(.text-cyan-300, .text-green-300) { color: #365c47; }
+.case-note :is(.text-amber-300, .text-blue-300) { color: #894234; }
+.case-note .border-white\/15 { border-color: #777b6340; }
+.case-note .bg-white\/5 { background: #ffffff55; }
+@media (max-width: 600px) {
+  .scene-toolbar { left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); justify-content: center; }
+  .scene-toolbar button { flex: 1; padding: 0 9px; gap: 7px; }
+  .case-board { inset: 12px 12px 90px; overflow: auto; pointer-events: auto; overscroll-behavior: contain; }
+  .case-board-notes { display: grid; grid-template-columns: 1fr; gap: 20px; padding: 7px; }
+  .case-note { position: relative; inset: auto; width: 100%; max-width: none; max-height: none; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) { .scene-toolbar button { transition: none; } }
