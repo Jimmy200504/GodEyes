@@ -1,8 +1,8 @@
 /**
  * 1-bit ordered dithering.
  *
- * Everything visual on the landing page goes through this: the wordmark, the
- * orbit render, the ramp block. One image model, one texture.
+ * The wordmark and the 1-bit half of the landing wall both go through this,
+ * so the two surfaces share one image model and one texture.
  */
 
 const BAYER_8 = [
@@ -138,31 +138,4 @@ export function blitGrid(
   target.imageSmoothingEnabled = false;
   target.clearRect(0, 0, width, height);
   target.drawImage(grid, 0, 0, width, height);
-}
-
-/**
- * The stripe → checker → dot ramp: a 1-bit coverage scale, drawn as a column of
- * bands that each dither a constant grey.
- */
-export function drawRamp(
-  ctx: CanvasRenderingContext2D,
-  cols: number,
-  rows: number,
-  bands: number,
-): void {
-  const image = ctx.createImageData(cols, rows);
-  const { data } = image;
-  for (let y = 0; y < rows; y += 1) {
-    const band = Math.floor((y / rows) * bands);
-    const level = 1 - (band + 0.5) / bands;
-    for (let x = 0; x < cols; x += 1) {
-      const i = (y * cols + x) * 4;
-      const on = level > THRESHOLD[(y % 8) * 8 + (x % 8)] ? 255 : 0;
-      data[i] = on;
-      data[i + 1] = on;
-      data[i + 2] = on;
-      data[i + 3] = 255;
-    }
-  }
-  ctx.putImageData(image, 0, 0);
 }
