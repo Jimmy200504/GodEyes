@@ -218,7 +218,7 @@ def scene(scene_id: str):
 
 
 @app.post('/api/scenes', status_code=202)
-async def create(name: str = Form(...), images: list[UploadFile] = File(...)):
+async def create(name: str = Form(...), images: list[UploadFile] = File(...), description: str = Form('', max_length=6000)):
     name = name.strip()
     if not name or len(name) > 80:
         raise HTTPException(422, '世界名稱需為 1–80 字')
@@ -249,9 +249,9 @@ async def create(name: str = Form(...), images: list[UploadFile] = File(...)):
         path = f'inputs/photo_{index + 1:02}{suffix}'
         (run / path).write_bytes(data)
         inputs.append(path)
-    world_api.save(run / 'INPUT.json', {'images': [{'path': p} for p in inputs]})
+    world_api.save(run / 'INPUT.json', {'images': [{'path': p} for p in inputs], 'description': description.strip()})
     shutil.copyfile(TASK, run / 'TASK.md')
-    world_api.save(run / 'scene.json', {'id': scene_id, 'name': name, 'status': 'queued',
+    world_api.save(run / 'scene.json', {'id': scene_id, 'name': name, 'description': description.strip(), 'status': 'queued',
         'stage': 'clean', 'inputs': inputs, 'createdAt': now(), 'updatedAt': now(), 'error': None})
     launch(run, 'clean')
     return public(run)

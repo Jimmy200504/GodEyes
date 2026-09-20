@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-20T00:00:00Z",
+  "title": "Design System: GodEyes Scene Workbench",
+  "extensions": {
+    "colorMeta": {
+      "workbench-action": { "role": "primary", "displayName": "Dark Teal", "tonalRamp": ["oklch(15% 0.04 220)", "oklch(26% 0.04 220)", "oklch(38% 0.04 220)", "oklch(49% 0.04 220)", "oklch(61% 0.04 220)", "oklch(72% 0.04 220)", "oklch(84% 0.04 220)", "oklch(95% 0.04 220)"] },
+      "workbench-blue": { "role": "secondary", "displayName": "Ice Blue", "tonalRamp": ["oklch(15% 0.02 235)", "oklch(26% 0.02 235)", "oklch(38% 0.02 235)", "oklch(49% 0.02 235)", "oklch(61% 0.02 235)", "oklch(72% 0.02 235)", "oklch(84% 0.02 235)", "oklch(95% 0.02 235)"] },
+      "workbench-green": { "role": "tertiary", "displayName": "Pale Green", "tonalRamp": ["oklch(15% 0.015 150)", "oklch(26% 0.015 150)", "oklch(38% 0.015 150)", "oklch(49% 0.015 150)", "oklch(61% 0.015 150)", "oklch(72% 0.015 150)", "oklch(84% 0.015 150)", "oklch(95% 0.015 150)"] }
+    },
+    "typographyMeta": {
+      "description": { "displayName": "Description Input", "purpose": "Largest workbench text; user content rather than a promotional heading." },
+      "incumbent-display": { "displayName": "Protected Incumbent Display", "purpose": "Preserved for existing surfaces outside the workbench." }
+    },
+    "shadows": [{ "name": "active-scan", "value": "0 -16px 32px 8px #59bedb40", "purpose": "Glow on the processing scan line only; sheets have no shadow." }],
+    "motion": [
+      { "name": "scene-scan", "value": "scene-scan 3.8s linear infinite alternate", "purpose": "Vertical scan only during queued/cleaning states; disabled for reduced motion." },
+      { "name": "step-navigation", "value": "smooth", "purpose": "User-selected sheet navigation; instant when reduced motion is requested. Automatic stage navigation is instant." }
+    ],
+    "breakpoints": [{ "name": "workbench-stack", "value": "700px" }]
+  },
+  "components": [
+    {
+      "name": "Primary Action", "kind": "button", "refersTo": "button-primary", "description": "Explicitly advances the task.",
+      "html": "<button class=\"ds-action\">生成空間 <span aria-hidden=\"true\">→</span></button>",
+      "css": ".ds-action{display:inline-flex;align-items:center;justify-content:center;gap:24px;min-height:46px;padding:12px 20px;border:0;border-radius:0;background:#234f5c;color:#fff;font:14px var(--font-body, sans-serif);cursor:pointer}.ds-action:hover:not(:disabled){background:#126677}.ds-action:focus-visible{outline:2px solid #a7b6ba;outline-offset:2px}.ds-action:disabled{opacity:.4;cursor:not-allowed}"
+    },
+    {
+      "name": "Description Field", "kind": "input", "refersTo": "description-field", "description": "Quiet field for optional scene context.",
+      "html": "<label class=\"ds-description\"><span>現場描述</span><textarea placeholder=\"寫下現場的格局、物件與補充資訊…\"></textarea><small>選填</small></label>",
+      "css": ".ds-description{display:flex;flex-direction:column;gap:24px;padding:24px;background:#edf4f6;color:#18282b;font:14px var(--font-body,sans-serif)}.ds-description textarea{min-height:180px;width:100%;resize:vertical;background:none;border:0;color:inherit;font:clamp(17px,1.7vw,24px)/1.7 var(--font-body,sans-serif)}.ds-description textarea::placeholder{color:#596f76;opacity:1}.ds-description textarea:focus-visible{outline:2px solid #a7b6ba;outline-offset:2px}.ds-description small{font-size:12px;color:#52676e}"
+    },
+    {
+      "name": "Step Navigation", "kind": "nav", "description": "Compact numbered navigation with a current-step fill.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"流程步驟\"><button aria-current=\"step\">01 上傳</button><button>02 影像</button><button>03 空間</button></nav>",
+      "css": ".ds-nav{display:flex;gap:12px}.ds-nav button{min-height:44px;padding:8px 12px;background:none;border:0;color:#18282b;font:13px var(--font-body,sans-serif);font-variant-numeric:tabular-nums;cursor:pointer}.ds-nav button[aria-current]{background:#d7eaf0}.ds-nav button:hover{background:#e4edef}.ds-nav button:focus-visible{outline:2px solid #a7b6ba;outline-offset:2px}"
+    },
+    {
+      "name": "Upload Target", "kind": "button", "description": "Dashed photo target with blue hover and drag feedback.",
+      "html": "<button class=\"ds-upload\"><svg width=\"28\" height=\"28\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1\" aria-hidden=\"true\"><path d=\"M12 5v14M5 12h14\"/></svg><span>放入現場照片</span><small>PNG / JPG / WEBP · 最多 4 張 · 每張 20 MB</small></button>",
+      "css": ".ds-upload{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;min-height:180px;padding:24px;border:1px dashed #839ca4;border-radius:0;background:#fafcfd;color:#18282b;font-family:var(--font-body,sans-serif);cursor:pointer}.ds-upload:hover,.ds-upload.is-dragging{background:#e4f2f6;border-color:#256a7b}.ds-upload small{font-size:12px;color:#52676e;line-height:1.6;text-align:center}.ds-upload:focus-visible{outline:2px solid #a7b6ba;outline-offset:2px}.ds-upload:disabled{opacity:.4;cursor:not-allowed}"
+    },
+    {
+      "name": "Image Sheet", "kind": "card", "refersTo": "sheet-image", "description": "Flat blue frame for the intermediate image and review controls.",
+      "html": "<section class=\"ds-sheet\"><div class=\"ds-caption\"><span>02 / 影像</span><span>等待照片</span></div><div class=\"ds-image\">上傳後，照片會在這裡處理。</div></section>",
+      "css": ".ds-sheet{padding:24px;border:1px solid #9aadb2;border-radius:0;background:#e8f3f9;color:#18282b;font-family:var(--font-body,sans-serif)}.ds-caption{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-bottom:24px;font-size:12px;font-variant-numeric:tabular-nums}.ds-caption>:first-child{font-size:15px}.ds-image{display:grid;place-items:center;min-height:200px;padding:24px;background:#dcebf1;color:#4b646c;font-size:14px;text-align:center}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Three-Stage Work Surface",
+    "overview": "White, ice blue, and pale green sheets create a continuous, quiet workspace. Small labels and large image areas make the work itself the hierarchy. The user-selected dottxt Products reference informs the desktop scroll behavior; the chosen palette and restrained copy are specific to this workbench.\n\nThis document scopes the new visual system to SceneBuilder. Landing and Explorer retain their incumbent palettes, typography, and rendering behavior. The `incumbent-*` and `explorer-accent` tokens record protected existing values from `src/index.css`; they are not replacements for workbench tokens. The workbench's local shell overrides must not move to `:root`.",
+    "keyCharacteristics": ["Bright sheets, square edges, and thin framing.", "Small navigation and captions; no promotional headings.", "Real task states and a manual review step before world generation."],
+    "rules": [{ "name": "The Scope Rule", "body": "Apply the bright palette only to the workbench shell; preserve the incumbent Landing and Explorer tokens.", "section": "colors" }],
+    "dos": ["Do keep the clean image and editable prompt available for manual review before the user chooses generation.", "Do use real task status for loading and completion states.", "Do preserve the incumbent Landing and Explorer tokens and rendering paths."],
+    "donts": ["Don't add large promotional headings or explanatory card grids to the workbench.", "Don't present the existing-scene loading backdrop as the newly generated world.", "Don't apply the workbench palette globally."]
+  }
+}

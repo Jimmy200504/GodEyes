@@ -27,8 +27,9 @@ export interface WorldScene {
 export const WORLD_SCENES: WorldScene[] = [
   {
     id: "shared-scene-v2",
-    name: "看不見的手機",
-    description: "三個人都來過辦公室。誰站的位置，真的看得到桌上的手機？",
+    name: "誰才是兇手",
+    description:
+      "三個人都來過這間辦公室，三個人的說法都成立。站在各自的位置上，誰真的看得到桌上那支手機？",
     source: "preset",
     thumbnail: "/scenes/previews/shared-scene-v2.webp",
     spzUrl: "/scenes/shared-scene-v2-full-res.spz",
@@ -37,7 +38,8 @@ export const WORLD_SCENES: WorldScene[] = [
   {
     id: "bright-truvia",
     name: "Bright 與 Truvia 案",
-    description: "一扇窗外的視線，牽涉兩人逾 27 年的冤獄。依案件製作的空間示意。",
+    description:
+      "唯一的目擊證詞來自一扇窗。那個角度究竟看不看得見兇案？兩人為此坐了 27 年牢，後獲平反。",
     source: "preset",
     thumbnail: "/scenes/previews/bright-truvia.webp",
     spzUrl: "/scenes/bright-truvia-full-res.spz",

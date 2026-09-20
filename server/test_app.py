@@ -60,6 +60,16 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(list(self.data.iterdir()), [])
 
+    def test_scene_description_reaches_codex_input(self):
+        response = self.client.post('/api/scenes', data={'name': '現場', 'description': '  窗戶旁有一張桌子。  '}, files={'images': ('photo.png', self.image.getvalue(), 'image/png')})
+        self.assertEqual(response.status_code, 202, response.text)
+        scene = response.json()
+        self.assertEqual(scene['description'], '窗戶旁有一張桌子。')
+        payload = json.loads((self.data / scene['id'] / 'INPUT.json').read_text())
+        self.assertEqual(payload['description'], scene['description'])
+        too_long = self.client.post('/api/scenes', data={'name': '現場', 'description': 'a' * 6001}, files={'images': ('photo.png', self.image.getvalue(), 'image/png')})
+        self.assertEqual(too_long.status_code, 422)
+
     def test_submission_freezes_prompt_and_rejects_duplicate(self):
         scene_id = self.create()
         run = self.review(scene_id)

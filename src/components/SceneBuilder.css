@@ -1,0 +1,70 @@
+.app-shell:has(.scene-flow) { --paper: #f5f7f8; --paper-2: #edf4f6; --bone: #fff; --sand: #d7eaf0; --ink: #18282b; --ink-hi: #fff; --ink-2: #526165; --rule: #a7b6ba; background: var(--paper); color: var(--ink); min-height: 100vh; }
+.scene-flow { padding: 0 clamp(16px, 3vw, 48px) 48px; caret-color: #126677; scrollbar-color: #83999f #f5f7f8; }
+.scene-flow ::selection { background: #bee5ef; color: #18282b; }
+.flow-toolbar { display: flex; align-items: center; justify-content: space-between; min-height: 72px; gap: 20px; }
+.flow-toolbar button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 12px; font-size: 13px; }
+.flow-toolbar nav { display: flex; gap: 12px; }
+.flow-toolbar [aria-current] { background: #d7eaf0; }
+.flow-toolbar button:hover { background: #e4edef; }
+.flow-toolbar button span, .flow-caption, .flow-bottom { font-variant-numeric: tabular-nums; }
+.flow-sheet { position: sticky; top: 16px; min-height: min(780px, calc(100svh - 32px)); margin-bottom: 56px; padding: 24px; border: 1px solid #9aadb2; display: flex; flex-direction: column; scroll-margin-top: 16px; background: #fff; }
+.flow-caption, .flow-bottom { display: flex; align-items: center; justify-content: space-between; gap: 16px; font-size: 12px; }
+.flow-caption { padding-bottom: 24px; }
+.flow-caption > :first-child { font-size: 15px; }
+.flow-bottom { padding-top: 24px; margin-top: auto; min-height: 68px; color: #43595e; }
+.flow-bottom a, .flow-prompt a { display: inline-flex; align-items: center; gap: 8px; text-decoration: underline; text-underline-offset: 4px; }
+.flow-input-grid { flex: 1; display: grid; grid-template-columns: 1fr 1.35fr; gap: 24px; min-height: 420px; }
+.flow-description { display: flex; flex-direction: column; padding: 24px; background: #edf4f6; gap: 24px; }
+.flow-description > span { font-size: 14px; }
+.flow-description textarea { flex: 1; width: 100%; resize: vertical; background: none; border: 0; min-height: 180px; font-size: clamp(17px, 1.7vw, 24px); line-height: 1.7; }
+.scene-flow textarea::placeholder { color: #596f76; opacity: 1; }
+.flow-description small, .flow-drop small { color: #52676e; font-size: 12px; }
+.flow-photos { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.flow-drop { flex: 1; min-height: 180px; border: 1px dashed #839ca4; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; background: #fafcfd; padding: 24px; }
+.flow-drop:hover, .flow-drop.is-dragging { background: #e4f2f6; border-color: #256a7b; }
+.flow-drop small { text-align: center; line-height: 1.6; }
+.flow-thumbnails { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.flow-thumbnails > div { position: relative; }
+.flow-thumbnails img { width: 100%; height: 180px; object-fit: cover; }
+.flow-thumbnails button { position: absolute; top: 8px; right: 8px; background: #fff; display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid #9aadb2; }
+.flow-action { display: inline-flex; align-items: center; justify-content: center; gap: 24px; min-height: 46px; padding: 12px 20px; color: #fff; background: #234f5c; font-size: 14px; }
+.flow-action:hover:not(:disabled) { background: #126677; }
+.flow-image { background: #e8f3f9; }
+.flow-scan { position: relative; flex: 1; min-height: 390px; display: grid; place-items: center; overflow: hidden; background: #dcebf1; }
+.flow-scan > img { width: 100%; height: 420px; object-fit: contain; }
+.flow-empty { color: #4b646c; font-size: 14px; padding: 24px; text-align: center; }
+.flow-scan-line { position: absolute; inset: 0 0 auto; height: 2px; background: #187e99; box-shadow: 0 -16px 32px 8px #59bedb40; animation: scene-scan 3.8s linear infinite alternate; }
+@keyframes scene-scan { from { top: 0; } to { top: calc(100% - 2px); } }
+.flow-loading { position: absolute; bottom: 20px; left: 20px; display: flex; gap: 10px; align-items: center; padding: 12px 16px; background: #fff; font-size: 13px; }
+.flow-prompt { border-top: 1px solid #9aadb2; margin-top: 20px; font-size: 13px; }
+.flow-prompt summary { padding: 16px 0; cursor: pointer; }
+.flow-prompt textarea { width: 100%; min-height: 180px; padding: 16px; background: #f8fcfe; border: 1px solid #9aadb2; line-height: 1.7; resize: vertical; }
+.flow-prompt a { padding-top: 12px; }
+.flow-world { background: #eaf3eb; margin-bottom: 0; }
+.flow-world-view { position: relative; flex: 1; min-height: 460px; background: #dce9df; display: grid; place-items: center; overflow: hidden; }
+.flow-world-view .board-backdrop-canvas { filter: grayscale(.35) brightness(1.3); }
+.flow-world-view .board-backdrop-mask { background: #ecf6ef40; }
+.flow-world-status { position: relative; display: flex; align-items: center; flex-direction: column; gap: 18px; background: #f7fcf5; padding: 32px 48px; border: 1px solid #a7bbad; }
+.flow-world-status small { font-size: 11px; color: #516357; }
+.flow-explore { position: relative; }
+.flow-render-note { position: absolute; left: 16px; bottom: 16px; font-size: 12px; background: #fff; padding: 8px; }
+.flow-error { position: sticky; bottom: 16px; z-index: 3; display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 16px; padding: 16px 20px; background: #fff4ee; border: 1px solid #b45a38; color: #813d26; font-size: 14px; }
+@media (max-width: 700px) {
+  .flow-toolbar { gap: 8px; }
+  .flow-toolbar nav { gap: 0; }
+  .flow-toolbar button { padding: 8px; font-size: 12px; }
+  .flow-sheet { position: relative; top: 0; min-height: auto; padding: 16px; margin-bottom: 24px; }
+  .flow-input-grid { grid-template-columns: 1fr; gap: 16px; }
+  .flow-description { padding: 20px; gap: 16px; }
+  .flow-description textarea { min-height: 150px; }
+  .flow-thumbnails img { height: 130px; }
+  .flow-scan { min-height: 280px; }
+  .flow-scan > img { height: 300px; }
+  .flow-world-view { min-height: 360px; }
+  .flow-bottom { flex-wrap: wrap; font-size: 11px; }
+  .flow-world-status { padding: 24px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scene-flow *, .scene-flow *::before, .scene-flow *::after { animation: none !important; transition: none !important; }
+  .flow-scan-line { top: 50%; }
+}

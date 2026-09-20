@@ -14,7 +14,12 @@ interface Splat {
 }
 
 const WORD = "GODEYES";
-const CELL = 5;
+/** Dot pitch in CSS pixels. Narrow panels need a finer grid, or the word
+ * dithers away to a smudge. */
+function cellFor(width: number): number {
+  if (width < 520) return 2;
+  return width < 700 ? 3 : 5;
+}
 const SPLATS = 2600;
 const DURATION = 2800;
 const HOLD = 240;
@@ -67,7 +72,8 @@ function sampleWord(cols: number, rows: number): Sampled {
   if (!grid) return { splats: [], mask: null };
   const { ctx } = grid;
 
-  const size = Math.min(rows * 1.02, (cols / WORD.length) * 1.48);
+  // Leaves a margin on both axes; the word must never touch the panel edge.
+  const size = Math.min(rows * 0.78, (cols / WORD.length) * 1.14);
   ctx.fillStyle = "#fff";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -84,8 +90,11 @@ function sampleWord(cols: number, rows: number): Sampled {
   if (!hits.length) return { splats: [], mask: null };
 
   const spread = Math.min(cols, rows) * 0.9;
+  // Density, not a fixed count: the same 2,600 splats poured into a small grid
+  // pile up and the word dithers to a smudge.
+  const count = Math.max(400, Math.min(SPLATS, Math.round(hits.length * 0.34)));
   const splats: Splat[] = [];
-  for (let i = 0; i < SPLATS; i += 1) {
+  for (let i = 0; i < count; i += 1) {
     const cell = hits[Math.floor(Math.random() * hits.length)];
     const tx = (cell % cols) + Math.random();
     const ty = Math.floor(cell / cols) + Math.random();
@@ -112,6 +121,7 @@ export default function SplatWordmark(): JSX.Element {
   const maskRef = useRef<HTMLCanvasElement | null>(null);
   const [runKey, setRunKey] = useState(0);
   const [settled, setSettled] = useState(false);
+  const [count, setCount] = useState(SPLATS);
 
   const replay = useCallback(() => {
     setSettled(false);
@@ -177,17 +187,19 @@ export default function SplatWordmark(): JSX.Element {
     const measure = (): void => {
       const rect = canvas.getBoundingClientRect();
       if (!rect.width || !rect.height) return;
-      cols = Math.max(24, Math.floor(rect.width / CELL));
-      rows = Math.max(8, Math.floor(rect.height / CELL));
+      const cell = cellFor(rect.width);
+      cols = Math.max(24, Math.floor(rect.width / cell));
+      rows = Math.max(8, Math.floor(rect.height / cell));
       // One device pixel per grid cell edge keeps the squares crisp.
-      canvas.width = cols * CELL;
-      canvas.height = rows * CELL;
+      canvas.width = cols * cell;
+      canvas.height = rows * cell;
       width = canvas.width;
       height = canvas.height;
       grid = createGrid(cols, rows);
       const sampled = sampleWord(cols, rows);
       splatsRef.current = sampled.splats;
       maskRef.current = sampled.mask;
+      setCount(sampled.splats.length);
     };
 
     const run = (now: number): void => {
@@ -241,7 +253,7 @@ export default function SplatWordmark(): JSX.Element {
       <div className="mark-bar">
         <span>{settled ? "CONVERGED" : "OPTIMISING"}</span>
         <span className="mark-bar-mid">
-          {SPLATS.toLocaleString("en-US")} GAUSSIANS · 1-BIT
+          {count.toLocaleString("en-US")} GAUSSIANS · 1-BIT
         </span>
         <button type="button" className="keycap" onClick={replay}>
           重跑收斂 <b>R</b>
